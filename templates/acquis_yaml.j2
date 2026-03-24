@@ -1,0 +1,30 @@
+# ============================================================================
+# CrowdSec — Sources d'acquisition des logs
+# Managed by Ansible — ne pas modifier manuellement
+# Migration NPM → Traefik : collection crowdsecurity/traefik
+# ============================================================================
+---
+# --- Logs des containers Docker (Traefik access logs) ---
+source: docker
+container_name:
+  - "*"
+labels:
+  type: docker
+---
+# --- Logs SSH via journald ---
+# Sur Debian 12+ / Ubuntu 22+, SSH écrit dans journald et non dans auth.log
+# CrowdSec lit le journal systemd directement via le socket
+source: journald
+journalctl_filter:
+  - "_SYSTEMD_UNIT=ssh.service"
+labels:
+  type: syslog
+---
+# --- Logs système hôte (si rsyslog est configuré) ---
+# Optionnel — fonctionne uniquement si /var/log/auth.log existe
+source: file
+filenames:
+  - /var/log/auth.log
+  - /var/log/syslog
+labels:
+  type: syslog

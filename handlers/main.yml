@@ -1,0 +1,24 @@
+---
+# ============================================================================
+# Handlers — Partagés VPS + Pi
+# ============================================================================
+ 
+- name: Restart SSH
+  systemd:
+    name: sshd
+    state: restarted
+ 
+- name: Restart Bouncer
+  systemd:
+    name: crowdsec-firewall-bouncer
+    state: restarted
+ 
+- name: Reload Docker Stack VPS
+  shell: "cd {{ stack_dir }} && docker compose up -d --remove-orphans"
+ 
+- name: Reload Docker Stack Pi
+  shell: "cd {{ pi_stack_dir }} && docker compose up -d --remove-orphans"
+ 
+- name: Apply sysctl
+  shell: sysctl --system
+ 

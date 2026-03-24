@@ -1,0 +1,19 @@
+# ============================================================================
+# Variables VPS (Sentinelle) — Copier vers vps_serv.yml et remplir les valeurs
+# Chiffrer ensuite : ansible-vault encrypt host_vars/vps_serv.yml
+# ============================================================================
+
+# --- Connexion finale (Play 2) ---
+vault_ssh_user: "lucas"
+vault_ssh_port: 2222
+vault_ssh_password: "CHANGE_ME"    # Mot de passe root OVH (Run 1 uniquement)
+
+# --- Chemins ---
+stack_dir: "/opt/stack"
+
+# --- CrowdSec ---
+vault_crowdsec_lapi_key: "CHANGE_ME"           # openssl rand -hex 16
+
+# --- NetBird Server ---
+vault_netbird_datastore_key: "CHANGE_ME"       # openssl rand -base64 32
+vault_netbird_relay_secret: "CHANGE_ME"        # openssl rand -base64 32

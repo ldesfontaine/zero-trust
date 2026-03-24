@@ -1,0 +1,106 @@
+# ============================================================================
+# AdGuard DNS Rewrites — Configuration automatique via API AdGuard
+#
+# Architecture Zero Trust :
+#   Services publics  (pdf, portfolio)  → DNS A public  → VPS public IP
+#   Services privés   (cloud, vault...) → AdGuard rewrite → VPS NetBird IP
+#
+# Flux accès privé :
+#   client NetBird → tunnel WireGuard → VPS NetBird IP → Traefik
+#   → middleware ipWhiteList 100.64.0.0/10 ✓ → Pi via mesh → service
+#
+# Pourquoi VPS NetBird IP (pas public IP) :
+#   Le trafic passe par le tunnel NetBird → source IP = IP NetBird du client
+#   → whitelist Traefik (100.64.0.0/10) correspond → accès autorisé
+#   Avec l'IP publique : source IP = IP publique du client → whitelist rejette
+#
+# Les certs Let's Encrypt sont émis via l'IP publique (DNS A public requis)
+# puis servis indifféremment sur les deux interfaces (0.0.0.0:443).
+#
+# Idempotent : supprime les rewrites avec mauvaise IP, recrée avec la bonne
+# ============================================================================
+---
+
+- name: "INFO — AdGuard DNS rewrites ignorés (enrollment requis)"
+  debug:
+    msg: "vault_pi_netbird_ip non renseigné — DNS rewrites AdGuard ignorés. Relancer après enrollment."
+  when: vault_pi_netbird_ip == "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+
+- name: Attendre qu'AdGuard soit disponible (depuis le Pi lui-même)
+  shell: >
+    curl -sf --max-time 5
+    -u '{{ vault_adguard_admin_user }}:{{ vault_adguard_admin_password }}'
+    http://{{ vault_pi_netbird_ip }}:3000/control/status > /dev/null
+  register: adguard_check
+  retries: 12
+  delay: 5
+  until: adguard_check.rc == 0
+  changed_when: false
+  when: vault_pi_netbird_ip != "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+
+- name: Récupérer les DNS rewrites existants dans AdGuard
+  shell: >
+    curl -sf
+    -u '{{ vault_adguard_admin_user }}:{{ vault_adguard_admin_password }}'
+    http://{{ vault_pi_netbird_ip }}:3000/control/rewrite/list
+  register: adguard_rewrites_raw
+  changed_when: false
+  when: vault_pi_netbird_ip != "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+
+- name: Parser les rewrites existants
+  set_fact:
+    adguard_rewrites_list: "{{ adguard_rewrites_raw.stdout | default('[]') | from_json }}"
+  when: vault_pi_netbird_ip != "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+
+# Supprime tout rewrite pour nos domaines qui ne pointe pas vers la bonne IP
+# (migration depuis Pi IP ou VPS public IP vers VPS NetBird IP)
+- name: Supprimer les DNS rewrites avec IP incorrecte
+  shell: >
+    curl -sf -X POST
+    -u '{{ vault_adguard_admin_user }}:{{ vault_adguard_admin_password }}'
+    http://{{ vault_pi_netbird_ip }}:3000/control/rewrite/delete
+    -H 'Content-Type: application/json'
+    -d '{"domain":"{{ item.domain }}","answer":"{{ item.answer }}"}'
+  loop: "{{ adguard_rewrites_list | selectattr('domain', 'in', [
+      nextcloud_subdomain   + '.' + vault_base_domain,
+      vaultwarden_subdomain + '.' + vault_base_domain,
+      grafana_subdomain     + '.' + vault_base_domain,
+      adguard_subdomain     + '.' + vault_base_domain
+    ]) | selectattr('answer', 'ne', vault_vps_netbird_ip) | list }}"
+  when: vault_pi_netbird_ip != "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+  changed_when: true
+
+# Recharger la liste après suppression éventuelle
+- name: Récupérer la liste des rewrites à jour
+  shell: >
+    curl -sf
+    -u '{{ vault_adguard_admin_user }}:{{ vault_adguard_admin_password }}'
+    http://{{ vault_pi_netbird_ip }}:3000/control/rewrite/list
+  register: adguard_rewrites_raw2
+  changed_when: false
+  when: vault_pi_netbird_ip != "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+
+- name: Parser la liste mise à jour
+  set_fact:
+    adguard_rewrites_list: "{{ adguard_rewrites_raw2.stdout | default('[]') | from_json }}"
+  when: vault_pi_netbird_ip != "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+
+# DNS rewrites → VPS NetBird IP
+# Traffic transite par le tunnel WireGuard → source IP = IP NetBird client
+# → middleware Traefik netbird-only (100.64.0.0/10) autorise l'accès
+- name: Configurer les DNS rewrites pour les services Pi privés
+  shell: >
+    curl -sf -X POST
+    -u '{{ vault_adguard_admin_user }}:{{ vault_adguard_admin_password }}'
+    http://{{ vault_pi_netbird_ip }}:3000/control/rewrite/add
+    -H 'Content-Type: application/json'
+    -d '{"domain":"{{ item }}.{{ vault_base_domain }}","answer":"{{ vault_vps_netbird_ip }}"}'
+  loop:
+    - "{{ nextcloud_subdomain }}"
+    - "{{ vaultwarden_subdomain }}"
+    - "{{ grafana_subdomain }}"
+    - "{{ adguard_subdomain }}"
+  when:
+    - vault_pi_netbird_ip != "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+    - adguard_rewrites_list | selectattr('domain', 'equalto', item + '.' + vault_base_domain) | selectattr('answer', 'equalto', vault_vps_netbird_ip) | list | length == 0
+  changed_when: true

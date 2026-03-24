@@ -1,0 +1,36 @@
+# ============================================================================
+# Variables Pi (Cerveau) — Copier vers pi_serv.yml et remplir les valeurs
+# Chiffrer ensuite : ansible-vault encrypt host_vars/pi_serv.yml
+# ============================================================================
+
+# --- Bootstrap Pi (Play 3 — Run 1 uniquement) ---
+vault_pi_bootstrap_user: "admin"
+vault_pi_bootstrap_password: "CHANGE_ME"
+
+# --- Connexion finale (Play 4) ---
+vault_pi_ip: "192.168.1.X"
+vault_pi_ssh_port: 2223
+
+# --- Chemins ---
+pi_stack_dir: "/mnt/tank/stack"
+
+# --- Nextcloud ---
+vault_nextcloud_admin_user: "admin"
+vault_nextcloud_admin_password: "CHANGE_ME"
+vault_nextcloud_db_password: "CHANGE_ME"       # openssl rand -hex 16
+
+# --- Vaultwarden ---
+vault_vaultwarden_admin_token: "CHANGE_ME"     # openssl rand -base64 48
+
+# --- AdGuard Home ---
+vault_adguard_admin_user: "admin"
+vault_adguard_admin_password: "CHANGE_ME"
+# Générer le hash : python3 -c "import bcrypt; print(bcrypt.hashpw(b'<password>', bcrypt.gensalt(10)).decode())"
+vault_adguard_admin_password_hash: "CHANGE_ME"
+
+# --- Grafana ---
+vault_grafana_admin_password: "CHANGE_ME"
+
+# --- NetBird API Token ---
+# Générer : Dashboard NetBird → team > user → Personal Access Tokens
+vault_netbird_api_token: "CHANGE_ME"

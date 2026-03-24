@@ -1,0 +1,56 @@
+# ============================================================================
+# Variables globales — Copier vers all.yml et remplir les valeurs
+# Chiffrer ensuite : ansible-vault encrypt group_vars/all.yml
+# ============================================================================
+
+# --- Versions Docker images ---
+traefik_version: "v2.11"
+crowdsec_version: "v1.6.8"
+netbird_server_version: "latest"
+netbird_dashboard_version: "latest"
+node_exporter_version: "v1.9.0"
+mariadb_version: "11"
+nextcloud_version: "30"
+vaultwarden_version: "1.32.1"
+grafana_version: "11.4.0"
+victoriametrics_version: "v1.106.1"
+adguard_version: "v0.107.55"
+adguard_exporter_version: "latest"
+bentopdf_image: "ghcr.io/alam00000/bentopdf"
+bentopdf_version: "latest"
+nginx_version: "alpine"
+
+# --- Domaine de base ---
+vault_base_domain: "CHANGE_ME"                 # ex: example.com
+vault_admin_email: "CHANGE_ME"                 # ex: admin@example.com
+
+# --- Sous-domaines VPS (exposés publiquement via Traefik + Let's Encrypt) ---
+netbird_subdomain: "mesh"
+
+# --- Sous-domaines Pi publics (exposés via VPS → mesh → Pi) ---
+bentopdf_subdomain: "pdf"
+portfolio_subdomain: "portfolio"
+
+# --- Sous-domaines Pi privés (accessibles uniquement via client NetBird) ---
+nextcloud_subdomain: "cloud"
+vaultwarden_subdomain: "vault"
+grafana_subdomain: "grafana"
+adguard_subdomain: "adguard"
+
+# --- FQDNs dérivés (calculés — ne pas modifier) ---
+netbird_fqdn: "{{ netbird_subdomain }}.{{ vault_base_domain }}"
+
+# --- SSH ---
+ssh_key_path: "~/.ssh/id_ed25519_vps_homelab.pub"
+priv_ssh_key_path: "~/.ssh/id_ed25519_vps_homelab"
+
+# --- Connexion finale (Play 4) ---
+vault_pi_ssh_user: "lucas"
+
+# --- NetBird IPs WireGuard ---
+# Renseigner après enrollment des deux machines puis relancer Ansible
+vault_vps_netbird_ip: "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+vault_pi_netbird_ip: "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+
+# --- IP publique VPS ---
+vault_vps_mgmt_ip: "CHANGE_ME"                 # IP publique de ton VPS

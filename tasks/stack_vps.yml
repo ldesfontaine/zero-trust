@@ -1,0 +1,35 @@
+# ============================================================================
+# Stack VPS — Traefik, CrowdSec, NetBird Server, Node Exporter
+# ============================================================================
+---
+- name: Création des dossiers de la stack VPS
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ vault_ssh_user }}"
+    group: "{{ vault_ssh_user }}"
+    mode: '0755'
+  loop:
+    - "{{ stack_dir }}"
+    - "{{ stack_dir }}/crowdsec"
+    - "{{ stack_dir }}/netbird"
+    - "{{ stack_dir }}/netbird/data"
+    - "{{ stack_dir }}/traefik"
+    - "{{ stack_dir }}/traefik/dynamic"
+
+- name: Déploiement des configurations (Templates)
+  template:
+    src: "templates/{{ item.src }}"
+    dest: "{{ stack_dir }}/{{ item.dest }}"
+    owner: "{{ vault_ssh_user }}"
+    mode: '0644'
+  loop:
+    - { src: 'docker-compose_vps_yml.j2',    dest: 'docker-compose.yml' }
+    - { src: 'acquis_yaml.j2',               dest: 'acquis.yaml' }
+    - { src: 'netbird_config_yaml.j2',       dest: 'netbird_config.yaml' }
+    - { src: 'traefik_dynamic_yml.j2',       dest: 'traefik/dynamic/pi-public.yml' }
+  notify: Reload Docker Stack VPS
+
+- name: Lancement de la Stack VPS
+  shell: "cd {{ stack_dir }} && docker compose pull && docker compose up -d --remove-orphans"
+  become_user: "{{ vault_ssh_user }}"

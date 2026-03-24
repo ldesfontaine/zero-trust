@@ -1,0 +1,124 @@
+# ============================================================
+# Grafana — Import des dashboards via API grafana.com
+#
+# Flux : télécharger le JSON depuis grafana.com (sur le Pi)
+#        → POST /api/dashboards/import avec le JSON complet
+#
+# Dashboards importés :
+#   - 1860  : Node Exporter Full   (métriques Pi + VPS)
+#   - 21689 : CrowdSec Dashboard   (bans, décisions)
+#   - 13330 : AdGuard Home         (DNS stats)
+#
+# Prérequis : NetBird IP configurée (vault_pi_netbird_ip)
+# Ignoré silencieusement au 1er run (IP placeholder).
+# ============================================================
+---
+
+- name: Vérifier que l'IP NetBird Pi est disponible (skip si premier run)
+  set_fact:
+    grafana_api_base: "http://{{ vault_pi_netbird_ip }}:3001"
+  when: vault_pi_netbird_ip != "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+
+- name: Attendre que Grafana soit prêt
+  uri:
+    url: "{{ grafana_api_base }}/api/health"
+    status_code: 200
+  register: grafana_health
+  retries: 24
+  delay: 5
+  until: grafana_health.status == 200
+  changed_when: false
+  when: grafana_api_base is defined
+
+# ── Node Exporter Full (1860) ────────────────────────────────
+- name: "Télécharger dashboard — Node Exporter Full (ID 1860)"
+  uri:
+    url: "https://grafana.com/api/dashboards/1860/revisions/latest/download"
+    return_content: true
+  register: dash_node_exporter
+  changed_when: false
+  when: grafana_api_base is defined
+
+- name: "Importer dashboard — Node Exporter Full (ID 1860)"
+  uri:
+    url: "{{ grafana_api_base }}/api/dashboards/import"
+    method: POST
+    url_username: "admin"
+    url_password: "{{ vault_grafana_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      dashboard: "{{ dash_node_exporter.json }}"
+      overwrite: true
+      folderId: 0
+      inputs:
+        - name: "DS_PROMETHEUS"
+          type: "datasource"
+          pluginId: "prometheus"
+          value: "VictoriaMetrics"
+    status_code: 200
+  changed_when: false
+  when: grafana_api_base is defined and dash_node_exporter is defined
+
+# ── CrowdSec (21689) ─────────────────────────────────────────
+- name: "Télécharger dashboard — CrowdSec (ID 21689)"
+  uri:
+    url: "https://grafana.com/api/dashboards/21689/revisions/latest/download"
+    return_content: true
+  register: dash_crowdsec
+  changed_when: false
+  when: grafana_api_base is defined
+
+- name: "Importer dashboard — CrowdSec (ID 21689)"
+  uri:
+    url: "{{ grafana_api_base }}/api/dashboards/import"
+    method: POST
+    url_username: "admin"
+    url_password: "{{ vault_grafana_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      dashboard: "{{ dash_crowdsec.json }}"
+      overwrite: true
+      folderId: 0
+      inputs:
+        - name: "DS_PROMETHEUS"
+          type: "datasource"
+          pluginId: "prometheus"
+          value: "VictoriaMetrics"
+    status_code: 200
+  changed_when: false
+  failed_when: false
+  when: grafana_api_base is defined and dash_crowdsec is defined
+
+# ── AdGuard Home (13330) ─────────────────────────────────────
+- name: "Télécharger dashboard — AdGuard Home (ID 13330)"
+  uri:
+    url: "https://grafana.com/api/dashboards/13330/revisions/latest/download"
+    return_content: true
+  register: dash_adguard
+  changed_when: false
+  failed_when: false
+  when: grafana_api_base is defined
+
+- name: "Importer dashboard — AdGuard Home (ID 13330)"
+  uri:
+    url: "{{ grafana_api_base }}/api/dashboards/import"
+    method: POST
+    url_username: "admin"
+    url_password: "{{ vault_grafana_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      dashboard: "{{ dash_adguard.json }}"
+      overwrite: true
+      folderId: 0
+      inputs:
+        - name: "DS_PROMETHEUS"
+          type: "datasource"
+          pluginId: "prometheus"
+          value: "VictoriaMetrics"
+    status_code: 200
+  changed_when: false
+  failed_when: false
+  when: grafana_api_base is defined and dash_adguard.json is defined
