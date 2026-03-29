@@ -328,15 +328,25 @@ vault_vps_netbird_ip: "100.121.243.246"
 vault_pi_netbird_ip:  "100.121.191.170"
 ```
 
-### 3.5 — Enrôler son laptop/phone (facultatif mais recommandé avant Run 2)
+### 3.5 — Enrôler son laptop/phone (**obligatoire avant Run 2**)
 
-Installer le client NetBird sur ses appareils admin et les connecter au mesh **avant** de lancer le Run 2. Cela permet à la Phase 8 (ACL) de détecter les peers admin et de créer le groupe `admins` correctement.
+> **⚠️ BLOQUANT** : Le Run 2 échoue intentionnellement (assert) si aucun peer admin n'est enrollé.
+> Sans peer admin dans le groupe `admins`, la suppression de la policy `Default` (All→All) couperait
+> tout accès au mesh — NetBird refuserait même les connexions SSH. Le garde-fou est volontaire.
+
+Installer le client NetBird sur au moins un appareil admin (laptop, desktop) et le connecter au mesh
+**avant** de lancer le Run 2 :
 
 ```bash
 # Linux/macOS
 curl -fsSL https://pkgs.netbird.io/install.sh | sh
-netbird up --setup-key TON_SETUP_KEY --management-url http://IP_VPS:33073
+sudo netbird up --setup-key TON_SETUP_KEY --management-url https://mesh.ton-domaine.com
+
+# Vérifier que le peer apparaît dans le dashboard
+# https://mesh.ton-domaine.com → Peers
 ```
+
+Le peer admin doit apparaître dans le dashboard NetBird avec un statut connecté avant de continuer.
 
 ---
 
@@ -353,7 +363,7 @@ Ce qui se passe en plus du Run 1 :
 | Phase 5 — Stack Pi | Regénère les docker-compose avec les vraies IPs NetBird (ports bindés sur l'IP WireGuard) |
 | Phase 6 — DNS NetBird | Configure AdGuard comme DNS resolver pour tous les peers du mesh |
 | Phase 7 — DNS Rewrites | Crée les rewrites AdGuard : `cloud/vault/grafana/adguard.ton-domaine.com` → IP NetBird VPS |
-| Phase 8 — ACL NetBird | Crée groupes `sentinelle`/`cerveau`/`admins` + 5 policies Zero Trust, supprime la policy `Default` |
+| Phase 8 — ACL NetBird | Crée groupes `sentinelle`/`cerveau`/`admins` + 5 policies Zero Trust, supprime la policy `Default` (**échoue si aucun peer admin — voir étape 3.5**) |
 
 A la fin du Run 2 :
 - Tous les services sont accessibles via leurs sous-domaines HTTPS

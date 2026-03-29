@@ -96,6 +96,16 @@
     mode: '0644'
   when: not adguard_conf_file.stat.exists
 
+# Synchronise uniquement le hash du mot de passe si les variables changent.
+# Ne touche pas au reste de la config (filtres, rewrites, settings UI).
+- name: Synchroniser le hash du mot de passe AdGuard
+  replace:
+    path: "{{ pi_stack_dir }}/adguard/conf/AdGuardHome.yaml"
+    regexp: '(    password: ).*'
+    replace: '\1"{{ vault_adguard_admin_password_hash }}"'
+  when: adguard_conf_file.stat.exists
+  notify: Restart AdGuard
+
 # --- Lancement ---
 - name: Arrêt propre du container AdGuard avant relance
   shell: "docker stop adguard 2>/dev/null || true && docker rm adguard 2>/dev/null || true"

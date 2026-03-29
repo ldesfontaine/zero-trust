@@ -26,16 +26,12 @@
     msg: "vault_pi_netbird_ip non renseigné — DNS rewrites AdGuard ignorés. Relancer après enrollment."
   when: vault_pi_netbird_ip == "REMPLACER_APRES_ENROLEMENT_NETBIRD"
 
-- name: Attendre qu'AdGuard soit disponible (depuis le Pi lui-même)
-  shell: >
-    curl -sf --max-time 5
-    -u '{{ vault_adguard_admin_user }}:{{ vault_adguard_admin_password }}'
-    http://{{ vault_pi_netbird_ip }}:3000/control/status > /dev/null
-  register: adguard_check
-  retries: 12
-  delay: 5
-  until: adguard_check.rc == 0
-  changed_when: false
+- name: Attendre qu'AdGuard soit disponible (TCP — sans auth pour éviter le blocage IP)
+  wait_for:
+    host: "{{ vault_pi_netbird_ip }}"
+    port: 3000
+    delay: 2
+    timeout: 120
   when: vault_pi_netbird_ip != "REMPLACER_APRES_ENROLEMENT_NETBIRD"
 
 - name: Récupérer les DNS rewrites existants dans AdGuard

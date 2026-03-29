@@ -21,6 +21,9 @@
  
 - name: Reload Docker Stack Pi
   shell: "cd {{ pi_stack_dir }} && docker compose up -d --remove-orphans"
+
+- name: Restart AdGuard
+  shell: "cd {{ pi_stack_dir }} && docker compose restart adguard"
  
 - name: Apply sysctl
   shell: sysctl --system
