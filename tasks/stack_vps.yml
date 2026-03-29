@@ -33,3 +33,28 @@
 - name: Lancement de la Stack VPS
   shell: "cd {{ stack_dir }} && docker compose pull && docker compose up -d --remove-orphans"
   become_user: "{{ vault_ssh_user }}"
+
+# ── Prometheus CrowdSec ─────────────────────────────────────────────────────
+# La config est générée par CrowdSec au premier run avec prometheus désactivé.
+# Ces tâches corrigent ça de façon idempotente dès que le fichier existe.
+
+- name: Vérifier que la config CrowdSec a été initialisée
+  stat:
+    path: "{{ stack_dir }}/crowdsec/config/config.yaml"
+  register: crowdsec_cfg
+
+- name: Activer prometheus CrowdSec (enabled)
+  ansible.builtin.replace:
+    path: "{{ stack_dir }}/crowdsec/config/config.yaml"
+    regexp: '(?m)^(prometheus:\n  enabled:) false'
+    replace: '\1 true'
+  when: crowdsec_cfg.stat.exists
+  notify: Restart CrowdSec
+
+- name: Activer prometheus CrowdSec (listen_addr → 0.0.0.0)
+  ansible.builtin.replace:
+    path: "{{ stack_dir }}/crowdsec/config/config.yaml"
+    regexp: '(  listen_addr:) 127\.0\.0\.1'
+    replace: '\1 0.0.0.0'
+  when: crowdsec_cfg.stat.exists
+  notify: Restart CrowdSec
