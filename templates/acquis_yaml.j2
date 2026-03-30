@@ -4,7 +4,19 @@
 # Migration NPM → Traefik : collection crowdsecurity/traefik
 # ============================================================================
 ---
-# --- Logs des containers Docker (Traefik access logs) ---
+# --- Logs Traefik — parser crowdsecurity/traefik ---
+# Source dédiée avec type: traefik pour activer les scénarios web (brute force,
+# path traversal, scan...). Sans ça, les attaques HTTP ne sont jamais détectées.
+source: docker
+container_name:
+  - "traefik"
+labels:
+  type: traefik
+---
+# --- Tous les autres containers Docker ---
+# Couvre Nextcloud, Vaultwarden, NetBird, etc.
+# Traefik est inclus dans le wildcard mais le parser "docker" ne matche pas
+# son format d'access log → pas de doublon fonctionnel, couverture complète.
 source: docker
 container_name:
   - "*"

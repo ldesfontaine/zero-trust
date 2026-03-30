@@ -77,8 +77,9 @@ services:
       - ./crowdsec/config:/etc/crowdsec
       - ./crowdsec/data:/var/lib/crowdsec/data
       - /var/log:/var/log:ro
-      # journald socket pour lire les logs SSH sur Debian 12+ sans auth.log
+      # journald — runtime (tmpfs) ET persistent (disk) pour ne rater aucun log SSH
       - /run/log/journal:/run/log/journal:ro
+      - /var/log/journal:/var/log/journal:ro
       - /etc/machine-id:/etc/machine-id:ro
       - ./acquis.yaml:/etc/crowdsec/acquis.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro

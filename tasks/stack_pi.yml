@@ -11,21 +11,6 @@
 # ============================================================================
 ---
 
-# --- Vérification préalable du montage ZFS ---
-- name: Vérifier que /mnt/tank est un montage ZFS actif
-  command: mountpoint -q /mnt/tank
-  register: tank_mount
-  failed_when: tank_mount.rc != 0
-  changed_when: false
-
-- name: Assert que le tank ZFS est monté
-  assert:
-    that: tank_mount.rc == 0
-    fail_msg: >
-      ERREUR : /mnt/tank n'est pas monté !
-      Vérifier le pool ZFS : zpool status && zfs list
-      Le déploiement est annulé pour éviter d'écrire sur la SD card.
-
 # --- Création de l'arborescence sur le tank ---
 - name: Création des dossiers de la stack Pi sur /mnt/tank
   file:

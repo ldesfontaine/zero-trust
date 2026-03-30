@@ -351,7 +351,7 @@
       when: nb_policies_resp.json | selectattr('name', 'equalto', 'sentinelle-cerveau-web') | list | length == 0
       changed_when: true
 
-    # Policy 4 : cerveau -> sentinelle (monitoring node-exporter)
+    # Policy 4 : cerveau -> sentinelle (monitoring node-exporter + CrowdSec prometheus)
     - name: Créer policy cerveau-sentinelle-monitoring
       uri:
         url: "https://{{ netbird_fqdn }}/api/policies"
@@ -362,17 +362,18 @@
         body_format: json
         body:
           name: "cerveau-sentinelle-monitoring"
-          description: "Pi -> VPS : TCP 9100 (vmagent scrape node-exporter VPS)"
+          description: "Pi -> VPS : TCP 9100 (node-exporter) + 6060 (CrowdSec prometheus)"
           enabled: true
           rules:
             - name: "node-exporter-scrape"
-              description: "vmagent Pi -> node-exporter VPS"
+              description: "vmagent Pi -> node-exporter + CrowdSec VPS"
               enabled: true
               action: "accept"
               bidirectional: false
               protocol: "tcp"
               ports:
                 - "9100"
+                - "6060"
               sources:
                 - "{{ nb_grp_cerveau }}"
               destinations:

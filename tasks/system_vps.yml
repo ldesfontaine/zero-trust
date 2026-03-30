@@ -92,7 +92,21 @@
     rule: allow
     port: "3478"
     proto: udp
- 
+
+- name: UFW - Allow node-exporter depuis le mesh NetBird (Pi → VPS)
+  ufw:
+    rule: allow
+    port: "9100"
+    proto: tcp
+    src: "100.64.0.0/10"
+
+- name: UFW - Allow CrowdSec prometheus depuis le mesh NetBird (Pi → VPS)
+  ufw:
+    rule: allow
+    port: "6060"
+    proto: tcp
+    src: "100.64.0.0/10"
+
 - name: UFW - Enable Firewall
   ufw:
     state: enabled
