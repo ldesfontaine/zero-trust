@@ -91,6 +91,16 @@
   when: adguard_conf_file.stat.exists
   notify: Restart AdGuard
 
+# --- Attendre que NetBird soit connecté (nécessaire pour le binding des ports) ---
+- name: Attendre l'interface NetBird (IP {{ vault_pi_netbird_ip }})
+  shell: ip addr show | grep -q "{{ vault_pi_netbird_ip }}"
+  register: nb_iface_check
+  retries: 30
+  delay: 2
+  until: nb_iface_check.rc == 0
+  changed_when: false
+  when: vault_pi_netbird_ip != "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+
 # --- Lancement ---
 - name: Arrêt propre du container AdGuard avant relance
   shell: "docker stop adguard 2>/dev/null || true && docker rm adguard 2>/dev/null || true"

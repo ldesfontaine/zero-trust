@@ -59,7 +59,7 @@
 - name: Mise à jour des parsers et scénarios CrowdSec (hub update + upgrade)
   shell: |
     docker exec crowdsec cscli hub update && \
-    docker exec crowdsec cscli hub upgrade -y
+    docker exec crowdsec cscli hub upgrade --force
   changed_when: false
   retries: 3
   delay: 10
