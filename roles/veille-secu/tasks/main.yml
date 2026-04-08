@@ -1,0 +1,38 @@
+# ============================================================================
+# Veille Sécu — Projet externe (git clone + docker compose)
+#
+# Repo GitHub séparé, déployé comme container Docker sur le Pi.
+# Ce rôle fournit le .env via template Jinja, le docker-compose.yml
+# est dans le repo du projet.
+# ============================================================================
+---
+
+- name: Créer le répertoire veille-secu
+  file:
+    path: "{{ veille_secu_dir }}"
+    state: directory
+    owner: "{{ vault_pi_ssh_user }}"
+    group: "{{ vault_pi_ssh_user }}"
+    mode: '0755'
+
+- name: Cloner ou mettre à jour le repo veille-secu
+  ansible.builtin.git:
+    repo: "{{ veille_secu_repo }}"
+    dest: "{{ veille_secu_dir }}"
+    version: "{{ veille_secu_version }}"
+    force: true
+  become_user: "{{ vault_pi_ssh_user }}"
+  register: veille_secu_git
+
+- name: Déployer le fichier .env (variables Ansible → config)
+  template:
+    src: veille-secu.env.j2
+    dest: "{{ veille_secu_dir }}/.env"
+    owner: "{{ vault_pi_ssh_user }}"
+    mode: '0600'
+  register: veille_secu_env
+
+- name: Lancer le container veille-secu
+  shell: "cd {{ veille_secu_dir }} && docker compose up -d --remove-orphans"
+  become_user: "{{ vault_pi_ssh_user }}"
+  when: veille_secu_git.changed or veille_secu_env.changed

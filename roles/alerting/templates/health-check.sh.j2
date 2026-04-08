@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# Managed by Ansible — ne pas modifier manuellement
+# Health-check local : vérifie l'état de la machine et envoie les alertes à Ntfy
+set -euo pipefail
+
+NTFY_URL="{{ ntfy_server_url }}/{{ ntfy_alert_topic }}"
+HOSTNAME=$(hostname -s)
+STATE_DIR="/var/lib/alerting"
+mkdir -p "${STATE_DIR}"
+
+notify() {
+  local title="$1" message="$2" priority="${3:-default}" tags="${4:-}"
+  curl -sf -H "Title: [${HOSTNAME}] ${title}" -H "Priority: ${priority}" -H "Tags: ${tags}" \
+    -d "${message}" "${NTFY_URL}" >/dev/null 2>&1 || true
+}
+
+# Anti-spam : ne pas renvoyer la même alerte avant 30 min
+should_alert() {
+  local key="$1"
+  local state_file="${STATE_DIR}/${key}"
+  local now
+  now=$(date +%s)
+  if [ -f "${state_file}" ]; then
+    local last
+    last=$(cat "${state_file}")
+    if (( now - last < 1800 )); then
+      return 1
+    fi
+  fi
+  echo "${now}" > "${state_file}"
+  return 0
+}
+
+clear_alert() {
+  local key="$1"
+  rm -f "${STATE_DIR}/${key}"
+}
+
+{% if alerting_check_disk %}
+# --- Disk ---
+while IFS= read -r line; do
+  usage=$(echo "${line}" | awk '{print $5}' | tr -d '%')
+  mount=$(echo "${line}" | awk '{print $6}')
+  if (( usage >= {{ alert_disk_critical_pct }} )); then
+    if should_alert "disk-${mount//\//_}"; then
+      notify "Disk critique" "Partition ${mount} à ${usage}%" "urgent" "warning"
+    fi
+  else
+    clear_alert "disk-${mount//\//_}"
+  fi
+done < <(df -h --output=pcent,target -x tmpfs -x devtmpfs -x overlay | tail -n +2)
+{% endif %}
+
+{% if alerting_check_ram %}
+# --- RAM ---
+RAM_PCT=$(free | awk '/Mem:/ {printf "%.0f", $3/$2*100}')
+if (( RAM_PCT >= {{ alert_ram_warning_pct }} )); then
+  if should_alert "ram"; then
+    notify "RAM élevée" "Utilisation RAM : ${RAM_PCT}%" "high" "warning"
+  fi
+else
+  clear_alert "ram"
+fi
+{% endif %}
+
+{% if alerting_check_cpu %}
+# --- CPU (moyenne 5 min) ---
+LOAD_5=$(awk '{print $2}' /proc/loadavg)
+NCPU=$(nproc)
+CPU_PCT=$(awk "BEGIN {printf \"%.0f\", (${LOAD_5}/${NCPU})*100}")
+if (( CPU_PCT >= {{ alert_cpu_warning_pct }} )); then
+  if should_alert "cpu"; then
+    notify "CPU élevé" "Load average 5min : ${LOAD_5} (${CPU_PCT}% de ${NCPU} cores)" "high" "warning"
+  fi
+else
+  clear_alert "cpu"
+fi
+{% endif %}
+
+{% if alerting_check_docker %}
+# --- Containers Docker unhealthy/exited ---
+while IFS= read -r container; do
+  [ -z "${container}" ] && continue
+  name=$(echo "${container}" | awk '{print $NF}')
+  status=$(echo "${container}" | awk '{print $(NF-1)}')
+  if [[ "${status}" == *"unhealthy"* ]] || [[ "${status}" == *"Exited"* ]]; then
+    if should_alert "docker-${name}"; then
+      notify "Container down" "${name} est ${status}" "urgent" "x"
+    fi
+  else
+    clear_alert "docker-${name}"
+  fi
+done < <(docker ps -a --format "{% raw %}{{.Status}} {{.Names}}{% endraw %}" 2>/dev/null || true)
+{% endif %}
+
+{% if alerting_check_zfs %}
+# --- ZFS pool health ---
+POOL_HEALTH=$(zpool status -x 2>/dev/null || echo "no pools")
+if [[ "${POOL_HEALTH}" != *"all pools are healthy"* ]] && [[ "${POOL_HEALTH}" != "no pools" ]]; then
+  if should_alert "zfs"; then
+    notify "ZFS DEGRADED" "Le pool ZFS a un problème : ${POOL_HEALTH}" "urgent" "rotating_light"
+  fi
+else
+  clear_alert "zfs"
+fi
+{% endif %}
+
+{% if alerting_check_backup_vps %}
+# --- Backup VPS stale ---
+STATUS_FILE="{{ backup_status_dir | default('/mnt/tank/stack/backup/status') }}/vps-latest.json"
+if [ -f "${STATUS_FILE}" ]; then
+  LAST_TS=$(python3 -c "import json,sys; print(json.load(open('${STATUS_FILE}'))['timestamp'])" 2>/dev/null || echo "")
+  if [ -n "${LAST_TS}" ]; then
+    LAST_EPOCH=$(date -d "${LAST_TS}" +%s 2>/dev/null || echo 0)
+    NOW_EPOCH=$(date +%s)
+    HOURS_AGO=$(( (NOW_EPOCH - LAST_EPOCH) / 3600 ))
+    if (( HOURS_AGO > {{ alert_backup_stale_hours }} )); then
+      if should_alert "backup-vps-stale"; then
+        notify "Backup VPS en retard" "Dernier backup il y a ${HOURS_AGO}h (seuil : {{ alert_backup_stale_hours }}h)" "high" "warning"
+      fi
+    else
+      clear_alert "backup-vps-stale"
+    fi
+  fi
+fi
+{% endif %}
+
+{% if alerting_check_backup_usb %}
+# --- Backup USB stale ---
+USB_STATUS_FILE="{{ backup_status_dir | default('/mnt/tank/stack/backup/status') }}/usb-latest.json"
+if [ -f "${USB_STATUS_FILE}" ]; then
+  LAST_TS=$(python3 -c "import json,sys; print(json.load(open('${USB_STATUS_FILE}'))['timestamp'])" 2>/dev/null || echo "")
+  if [ -n "${LAST_TS}" ]; then
+    LAST_EPOCH=$(date -d "${LAST_TS}" +%s 2>/dev/null || echo 0)
+    NOW_EPOCH=$(date +%s)
+    DAYS_AGO=$(( (NOW_EPOCH - LAST_EPOCH) / 86400 ))
+    if (( DAYS_AGO > {{ alert_backup_usb_stale_days }} )); then
+      if should_alert "backup-usb-stale"; then
+        notify "Backup USB en retard" "Dernier backup USB il y a ${DAYS_AGO} jours (seuil : {{ alert_backup_usb_stale_days }}j). Branche ton SSD." "high" "warning"
+      fi
+    else
+      clear_alert "backup-usb-stale"
+    fi
+  fi
+fi
+{% endif %}

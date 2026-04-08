@@ -1,0 +1,41 @@
+# ============================================================================
+# NetBird Client — Installation sur l'hôte (VPS + Pi)
+#
+# Le client tourne sur l'hôte pour avoir accès direct aux interfaces
+# réseau kernel (WireGuard).
+#
+# Après déploiement, enrollment manuel :
+#   sudo netbird up --setup-key <TON_SETUP_KEY> \
+#     --management-url http://<VPS_IP>:33073
+#   netbird status  → noter l'IP WireGuard attribuée
+# ============================================================================
+---
+ 
+- name: Installer NetBird (script officiel — gère arm64 + amd64)
+  shell: "curl -fsSL https://pkgs.netbird.io/install.sh | sh"
+  args:
+    creates: /usr/bin/netbird
+ 
+- name: Mettre à jour le cache apt après ajout du repo NetBird
+  apt:
+    update_cache: yes
+ 
+- name: Installer le package NetBird
+  apt:
+    name: netbird
+    state: latest
+ 
+- name: Activer et démarrer NetBird daemon
+  systemd:
+    name: netbird
+    state: started
+    enabled: yes
+ 
+- name: "INFO — Enrollment NetBird"
+  debug:
+    msg: >
+      NetBird installé et démarré.
+      Pour enrôler cette machine dans le réseau VPN, exécuter manuellement :
+        sudo netbird up --setup-key <TON_SETUP_KEY>
+          --management-url http://{{ vault_vps_mgmt_ip }}:33073
+      Puis : netbird status → noter l'IP WireGuard attribuée

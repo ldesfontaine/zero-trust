@@ -1,0 +1,34 @@
+# Déclaration backup modulaire — stack-pi
+# Scanné automatiquement par le cron backup-zfs
+---
+services:
+
+  seafile:
+    backup_vps:
+      enabled: true
+      priority: critical
+      paths:
+        - "{{ pi_stack_dir }}/seafile/data"
+      pre_hook: "docker exec seafile-db mysqldump --all-databases"
+      pre_hook_output: /tmp/seafile-db.sql
+      estimated_size: "variable"
+
+  vaultwarden:
+    backup_vps:
+      enabled: true
+      priority: critical
+      paths:
+        - "{{ pi_stack_dir }}/vaultwarden"
+      estimated_size: "50M"
+
+  adguard:
+    backup_vps:
+      enabled: true
+      priority: normal
+      paths:
+        - "{{ pi_stack_dir }}/adguard/conf"
+      estimated_size: "5M"
+
+  immich:
+    backup_vps:
+      enabled: false  # trop volumineux (~250 Go), SSD USB uniquement

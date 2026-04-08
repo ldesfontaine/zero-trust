@@ -1,0 +1,5 @@
+---
+dependencies:
+  - stack-vps
+
+allow_duplicates: false

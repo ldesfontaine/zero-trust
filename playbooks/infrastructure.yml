@@ -1,0 +1,103 @@
+# ============================================================================
+# Infrastructure (L1-L3) — Système, hardening, Docker, réseau mesh
+# Usage : ansible-playbook -i inventory.ini playbooks/infrastructure.yml
+#
+# Prérequis : L0 (bootstrap) déjà exécuté — user admin existant.
+# Idempotent : peut être relancé autant de fois que nécessaire.
+# ============================================================================
+---
+
+# ============================================================
+# PLAY 1 — Infrastructure VPS / Sentinelle (L1-L3)
+# ============================================================
+- name: "Infrastructure Sentinelle (VPS) — L1-L3"
+  hosts: vps
+  become: true
+  gather_facts: false
+  ignore_unreachable: true
+  vars:
+    ansible_user: "{{ vault_ssh_user }}"
+    ansible_port: 22
+    ansible_ssh_private_key_file: "{{ priv_ssh_key_path }}"
+
+  pre_tasks:
+    - name: "Détecter le port SSH actif ({{ vault_ssh_port }} ou 22)"
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: "{{ vault_ssh_port }}"
+        timeout: 5
+      delegate_to: localhost
+      ignore_errors: true
+      register: ssh_port_hardened
+      become: false
+      tags: [always]
+
+    - name: "Basculer sur le port SSH durci si disponible"
+      set_fact:
+        ansible_port: "{{ vault_ssh_port if not ssh_port_hardened.failed else 22 }}"
+      tags: [always]
+
+    - name: "Re-gather facts avec le bon port"
+      setup:
+      tags: [always]
+
+  roles:
+    - role: system-vps
+      tags: [layer1, system-vps]
+    - role: hardening-vps
+      tags: [layer1, hardening-vps]
+    - role: docker
+      tags: [layer2, docker]
+    - role: netbird-client
+      tags: [layer3, netbird-client]
+
+
+# ============================================================
+# PLAY 2 — Infrastructure Pi / Cerveau (L1-L3)
+# ============================================================
+- name: "Infrastructure Cerveau (Pi) — L1-L3"
+  hosts: pi
+  become: true
+  gather_facts: false
+  ignore_unreachable: true
+  vars:
+    ansible_user: "{{ vault_pi_ssh_user }}"
+    ansible_port: 22
+    ansible_ssh_private_key_file: "{{ priv_ssh_key_path }}"
+
+  pre_tasks:
+    - name: "Détecter le port SSH actif ({{ vault_pi_ssh_port }} ou 22)"
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: "{{ vault_pi_ssh_port }}"
+        timeout: 5
+      delegate_to: localhost
+      ignore_errors: true
+      register: ssh_port_hardened
+      become: false
+      tags: [always]
+
+    - name: "Basculer sur le port SSH durci si disponible"
+      set_fact:
+        ansible_port: "{{ vault_pi_ssh_port if not ssh_port_hardened.failed else 22 }}"
+      tags: [always]
+
+    - name: "Re-gather facts avec le bon port"
+      setup:
+      tags: [always]
+
+  roles:
+    - role: system-pi
+      tags: [layer1, system-pi]
+    - role: hardening-pi
+      tags: [layer1, hardening-pi]
+    - role: docker
+      tags: [layer2, docker]
+    - role: netbird-client
+      tags: [layer3, netbird-client]
+    - role: netbird-dns
+      tags: [layer3, netbird-dns]
+    - role: adguard-dns
+      tags: [layer3, adguard-dns]
+    - role: netbird-acl
+      tags: [layer3, netbird-acl]

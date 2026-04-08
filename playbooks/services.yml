@@ -1,0 +1,91 @@
+# ============================================================================
+# Services applicatifs (L4) — Stacks Docker, CrowdSec
+# Usage : ansible-playbook -i inventory.ini playbooks/services.yml
+#
+# Prérequis : L0-L3 (bootstrap + infrastructure) déjà exécutés.
+# Idempotent : peut être relancé autant de fois que nécessaire.
+# ============================================================================
+---
+
+# ============================================================
+# PLAY 1 — Services VPS / Sentinelle (L4)
+# ============================================================
+- name: "Services Sentinelle (VPS) — L4"
+  hosts: vps
+  become: true
+  gather_facts: false
+  ignore_unreachable: true
+  vars:
+    ansible_user: "{{ vault_ssh_user }}"
+    ansible_port: 22
+    ansible_ssh_private_key_file: "{{ priv_ssh_key_path }}"
+
+  pre_tasks:
+    - name: "Détecter le port SSH actif ({{ vault_ssh_port }} ou 22)"
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: "{{ vault_ssh_port }}"
+        timeout: 5
+      delegate_to: localhost
+      ignore_errors: true
+      register: ssh_port_hardened
+      become: false
+      tags: [always]
+
+    - name: "Basculer sur le port SSH durci si disponible"
+      set_fact:
+        ansible_port: "{{ vault_ssh_port if not ssh_port_hardened.failed else 22 }}"
+      tags: [always]
+
+    - name: "Re-gather facts avec le bon port"
+      setup:
+      tags: [always]
+
+  roles:
+    - role: stack-vps
+      tags: [layer4, stack-vps]
+    - role: crowdsec-bouncer
+      tags: [layer4, crowdsec-bouncer]
+
+
+# ============================================================
+# PLAY 2 — Services Pi / Cerveau (L4)
+# ============================================================
+- name: "Services Cerveau (Pi) — L4"
+  hosts: pi
+  become: true
+  gather_facts: false
+  ignore_unreachable: true
+  vars:
+    ansible_user: "{{ vault_pi_ssh_user }}"
+    ansible_port: 22
+    ansible_ssh_private_key_file: "{{ priv_ssh_key_path }}"
+
+  pre_tasks:
+    - name: "Détecter le port SSH actif ({{ vault_pi_ssh_port }} ou 22)"
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: "{{ vault_pi_ssh_port }}"
+        timeout: 5
+      delegate_to: localhost
+      ignore_errors: true
+      register: ssh_port_hardened
+      become: false
+      tags: [always]
+
+    - name: "Basculer sur le port SSH durci si disponible"
+      set_fact:
+        ansible_port: "{{ vault_pi_ssh_port if not ssh_port_hardened.failed else 22 }}"
+      tags: [always]
+
+    - name: "Re-gather facts avec le bon port"
+      setup:
+      tags: [always]
+
+  roles:
+    - role: stack-pi
+      tags: [layer4, stack-pi]
+    - role: veille-secu
+      tags: [layer4, veille-secu]
+    - role: bientot
+      tags: [layer4, bientot]

@@ -4,6 +4,9 @@
 *.swp
 *.swo
 *~
+.claude/
+docs/
+CLAUDE.md
 
 # Ansible
 *.retry

@@ -1,0 +1,61 @@
+# ============================================================================
+# Docker Engine — Installation depuis le dépôt officiel Docker
+# Compatible amd64 (VPS) et arm64 (Pi)
+# Doc : https://docs.docker.com/engine/install/
+# ============================================================================
+ 
+- name: Installer les prérequis Docker
+  apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+ 
+- name: Créer le répertoire keyrings
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+ 
+- name: Ajouter la clé GPG Docker
+  shell: |
+    curl -fsSL https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg | \
+    gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  args:
+    creates: /etc/apt/keyrings/docker.gpg
+ 
+- name: Ajouter le dépôt Docker
+  copy:
+    content: |
+      deb [arch={{ ansible_architecture | replace('x86_64','amd64') | replace('aarch64','arm64') }} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} stable
+    dest: /etc/apt/sources.list.d/docker.list
+    mode: '0644'
+ 
+- name: Mettre à jour le cache apt après ajout du dépôt Docker
+  apt:
+    update_cache: yes
+ 
+- name: Installer Docker Engine (dernière version stable)
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
+    state: latest
+ 
+- name: Démarrer et activer Docker
+  systemd:
+    name: docker
+    state: started
+    enabled: yes
+ 
+- name: Ajouter l'utilisateur au groupe docker
+  user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: yes
+
+- name: Réinitialiser la connexion SSH pour appliquer le nouveau groupe docker
+  meta: reset_connection

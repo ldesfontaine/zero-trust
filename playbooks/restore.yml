@@ -1,0 +1,180 @@
+# ============================================================================
+# Restore — Restauration de services depuis backup VPS ou USB
+# Usage :
+#   ansible-playbook playbooks/restore.yml --tags vaultwarden --limit pi
+#   ansible-playbook playbooks/restore.yml --limit pi -e restore_source=usb
+#   ansible-playbook playbooks/restore.yml --limit pi -e restore_source=vps
+#
+# Sources de restauration :
+#   - vps : télécharge le dernier backup chiffré GPG depuis le VPS via NetBird
+#   - usb : lit depuis le SSD USB monté et déverrouillé
+#
+# Prérequis :
+#   - Pour VPS : clé GPG privée disponible sur la machine
+#   - Pour USB : SSD branché, déverrouillé LUKS, monté sur /mnt/backup-usb
+# ============================================================================
+---
+
+- name: "Restauration services — Brain (Pi)"
+  hosts: pi
+  become: true
+  gather_facts: true
+  vars:
+    ansible_user: "{{ vault_pi_ssh_user }}"
+    ansible_port: "{{ vault_pi_ssh_port }}"
+    ansible_ssh_private_key_file: "{{ priv_ssh_key_path }}"
+    restore_source: "vps"
+    backup_vps_dest_host: "{{ vault_vps_netbird_ip }}"
+    backup_vps_dest_dir: "/opt/backups/brain-01"
+    backup_vps_dest_user: "{{ vault_ssh_user }}"
+    backup_usb_mount: "/mnt/backup-usb"
+    ntfy_url: "{{ vault_ntfy_server_url | default('https://' + ntfy_subdomain + '.' + vault_base_domain) }}/{{ vault_ntfy_alert_topic | default('alerts') }}"
+
+  tasks:
+
+    # ── Validation ─────────────────────────────────────────────────────────
+
+    - name: Vérifier la source de restauration
+      assert:
+        that: restore_source in ['vps', 'usb']
+        fail_msg: "restore_source doit être 'vps' ou 'usb' (reçu : {{ restore_source }})"
+      tags: [always]
+
+    - name: Vérifier que le SSD USB est monté (source usb)
+      stat:
+        path: "{{ backup_usb_mount }}"
+      register: usb_mount
+      when: restore_source == 'usb'
+      tags: [always]
+
+    - name: Échouer si le SSD USB n'est pas monté
+      fail:
+        msg: "SSD USB non monté sur {{ backup_usb_mount }}. Brancher et déverrouiller LUKS d'abord."
+      when: restore_source == 'usb' and not usb_mount.stat.exists
+      tags: [always]
+
+    # ── Restauration Vaultwarden ───────────────────────────────────────────
+
+    - name: "Stopper Vaultwarden"
+      shell: "cd {{ pi_stack_dir }} && docker compose stop vaultwarden"
+      tags: [vaultwarden]
+
+    - name: "Restaurer Vaultwarden depuis VPS"
+      when: restore_source == 'vps'
+      tags: [vaultwarden]
+      block:
+        - name: Télécharger le dernier backup chiffré
+          shell: >
+            scp -o StrictHostKeyChecking=no -i {{ priv_ssh_key_path }}
+            {{ backup_vps_dest_user }}@{{ backup_vps_dest_host }}:{{ backup_vps_dest_dir }}/$(ssh -o StrictHostKeyChecking=no -i {{ priv_ssh_key_path }} {{ backup_vps_dest_user }}@{{ backup_vps_dest_host }} "ls -t {{ backup_vps_dest_dir }}/backup-vps-*.tar.gz.gpg | head -1")
+            /tmp/restore-backup.tar.gz.gpg
+
+        - name: Déchiffrer le backup GPG
+          shell: "gpg --batch --yes --decrypt --output /tmp/restore-backup.tar.gz /tmp/restore-backup.tar.gz.gpg"
+
+        - name: Extraire les données Vaultwarden
+          shell: "tar -xzf /tmp/restore-backup.tar.gz -C / --include='*vaultwarden*'"
+
+    - name: "Restaurer Vaultwarden depuis USB"
+      when: restore_source == 'usb'
+      tags: [vaultwarden]
+      block:
+        - name: Restaurer les données depuis le snapshot USB
+          shell: "cp -a {{ backup_usb_mount }}/stack/vaultwarden/* {{ pi_stack_dir }}/vaultwarden/"
+
+    - name: "Relancer Vaultwarden"
+      shell: "cd {{ pi_stack_dir }} && docker compose up -d vaultwarden"
+      tags: [vaultwarden]
+
+    - name: "Vérifier que Vaultwarden répond"
+      uri:
+        url: "http://127.0.0.1:8093/alive"
+        status_code: 200
+      retries: 10
+      delay: 5
+      register: vw_health
+      until: vw_health.status == 200
+      ignore_errors: true
+      tags: [vaultwarden]
+
+    # ── Restauration Seafile ───────────────────────────────────────────────
+
+    - name: "Stopper Seafile"
+      shell: "cd {{ pi_stack_dir }} && docker compose stop seafile seafile-db memcached"
+      tags: [seafile]
+
+    - name: "Restaurer Seafile depuis VPS"
+      when: restore_source == 'vps'
+      tags: [seafile]
+      block:
+        - name: Télécharger et déchiffrer le backup
+          shell: |
+            scp -o StrictHostKeyChecking=no -i {{ priv_ssh_key_path }} \
+              {{ backup_vps_dest_user }}@{{ backup_vps_dest_host }}:$(ssh -o StrictHostKeyChecking=no -i {{ priv_ssh_key_path }} {{ backup_vps_dest_user }}@{{ backup_vps_dest_host }} "ls -t {{ backup_vps_dest_dir }}/backup-vps-*.tar.gz.gpg | head -1") \
+              /tmp/restore-backup.tar.gz.gpg
+            gpg --batch --yes --decrypt --output /tmp/restore-backup.tar.gz /tmp/restore-backup.tar.gz.gpg
+
+        - name: Extraire les données Seafile
+          shell: "tar -xzf /tmp/restore-backup.tar.gz -C / --include='*seafile*'"
+
+        - name: Restaurer le dump SQL
+          shell: |
+            cd {{ pi_stack_dir }} && docker compose up -d seafile-db
+            sleep 10
+            docker exec -i seafile-db mysql -uroot -p{{ vault_seafile_db_root_password }} < /tmp/seafile-db.sql
+          no_log: true
+
+    - name: "Restaurer Seafile depuis USB"
+      when: restore_source == 'usb'
+      tags: [seafile]
+      block:
+        - name: Restaurer les données depuis le snapshot USB
+          shell: |
+            cp -a {{ backup_usb_mount }}/stack/seafile/data/* {{ pi_stack_dir }}/seafile/data/
+            cp -a {{ backup_usb_mount }}/stack/seafile/db/* {{ pi_stack_dir }}/seafile/db/
+
+    - name: "Relancer Seafile"
+      shell: "cd {{ pi_stack_dir }} && docker compose up -d seafile-db memcached seafile"
+      tags: [seafile]
+
+    # ── Restauration Immich (USB uniquement) ───────────────────────────────
+
+    - name: "Restaurer Immich depuis USB"
+      tags: [immich]
+      block:
+        - name: Vérifier que la source est USB pour Immich
+          assert:
+            that: restore_source == 'usb'
+            fail_msg: "Immich est trop volumineux pour le backup VPS. Utiliser -e restore_source=usb"
+
+        - name: "Stopper Immich"
+          shell: "cd {{ pi_stack_dir }} && docker compose stop immich-server immich-machine-learning immich-redis immich-db"
+
+        - name: Restaurer les données Immich depuis USB
+          shell: |
+            cp -a {{ backup_usb_mount }}/stack/immich/upload/* {{ pi_stack_dir }}/immich/upload/
+            cp -a {{ backup_usb_mount }}/stack/immich/db/* {{ pi_stack_dir }}/immich/db/
+
+        - name: "Relancer Immich"
+          shell: "cd {{ pi_stack_dir }} && docker compose up -d immich-db immich-redis immich-server immich-machine-learning"
+
+    # ── Nettoyage et notification ──────────────────────────────────────────
+
+    - name: Nettoyer les fichiers temporaires
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/restore-backup.tar.gz.gpg
+        - /tmp/restore-backup.tar.gz
+        - /tmp/seafile-db.sql
+      tags: [always]
+
+    - name: Notifier la fin de la restauration
+      shell: >
+        curl -sf -H "Title: Restauration terminee"
+        -H "Tags: white_check_mark"
+        -d "Restauration depuis {{ restore_source }} terminee sur {{ inventory_hostname }}"
+        "{{ ntfy_url }}"
+      ignore_errors: true
+      tags: [always]

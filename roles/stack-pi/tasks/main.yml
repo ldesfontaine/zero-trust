@@ -1,0 +1,107 @@
+# ============================================================================
+# Stack Pi — Seafile, Vaultwarden, AdGuard Home, BentoPDF, Portfolio
+#
+# Données persistantes → /mnt/tank/stack  (ZFS mirror NVMe)
+# Images Docker        → /var/lib/docker  (SD card 64Go — défaut Docker)
+#
+# Deux réseaux Docker isolés :
+#   brain_public  — BentoPDF, Portfolio (accessibles via VPS → mesh)
+#   brain_private — Seafile, Vaultwarden, AdGuard (VPN admin only)
+#
+# Note : Grafana/VictoriaMetrics/vmagent ont été remplacés par Bientôt
+#        (projet externe, déployé par son propre rôle Ansible)
+# ============================================================================
+---
+
+# --- Création de l'arborescence sur le tank ---
+- name: Création des dossiers de la stack Pi sur /mnt/tank
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ vault_pi_ssh_user }}"
+    group: "{{ vault_pi_ssh_user }}"
+    mode: '0755'
+  loop:
+    - "{{ pi_stack_dir }}"
+    - "{{ pi_stack_dir }}/bentopdf"
+    - "{{ pi_stack_dir }}/portfolio"
+    - "{{ pi_stack_dir }}/seafile"
+    - "{{ pi_stack_dir }}/seafile/data"
+    - "{{ pi_stack_dir }}/seafile/db"
+    - "{{ pi_stack_dir }}/vaultwarden"
+    - "{{ pi_stack_dir }}/adguard"
+    - "{{ pi_stack_dir }}/adguard/work"
+    - "{{ pi_stack_dir }}/adguard/conf"
+    - "{{ pi_stack_dir }}/immich"
+    - "{{ pi_stack_dir }}/immich/upload"
+    - "{{ pi_stack_dir }}/immich/db"
+    - "{{ pi_stack_dir }}/immich/model-cache"
+# --- Déploiement des configs ---
+- name: Déploiement du docker-compose Pi
+  template:
+    src: docker-compose_pi_yml.j2
+    dest: "{{ pi_stack_dir }}/docker-compose.yml"
+    owner: "{{ vault_pi_ssh_user }}"
+    mode: '0644'
+  notify: Reload Docker Stack Pi
+
+# --- Config initiale AdGuard (skip le setup wizard) ---
+- name: Vérifier si AdGuard est déjà configuré
+  stat:
+    path: "{{ pi_stack_dir }}/adguard/conf/AdGuardHome.yaml"
+  register: adguard_conf_file
+
+- name: Déployer la config initiale AdGuard (premier run uniquement)
+  template:
+    src: adguardhome_yaml.j2
+    dest: "{{ pi_stack_dir }}/adguard/conf/AdGuardHome.yaml"
+    owner: "{{ vault_pi_ssh_user }}"
+    mode: '0644'
+  when: not adguard_conf_file.stat.exists
+
+# Synchronise uniquement le hash du mot de passe si les variables changent.
+- name: Synchroniser le hash du mot de passe AdGuard
+  replace:
+    path: "{{ pi_stack_dir }}/adguard/conf/AdGuardHome.yaml"
+    regexp: '(    password: ).*'
+    replace: '\1"{{ vault_adguard_admin_password_hash }}"'
+  when: adguard_conf_file.stat.exists
+  notify: Restart AdGuard
+
+# --- Attendre que NetBird soit connecté (nécessaire pour le binding des ports) ---
+- name: Attendre l'interface NetBird (IP {{ vault_pi_netbird_ip }})
+  shell: ip addr show | grep -q "{{ vault_pi_netbird_ip }}"
+  register: nb_iface_check
+  retries: 30
+  delay: 2
+  until: nb_iface_check.rc == 0
+  changed_when: false
+  when: vault_pi_netbird_ip != "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+
+# --- Lancement ---
+- name: Cloner ou mettre à jour le dépôt du portfolio
+  ansible.builtin.git:
+    repo: "https://github.com/ldesfontaine/termfolio.git"
+    dest: "{{ pi_stack_dir }}/portfolio"
+    version: main
+  become_user: "{{ vault_pi_ssh_user }}"
+  register: portfolio_git
+
+- name: Builder l'image Docker du portfolio (si code modifié)
+  ansible.builtin.command: docker build --network=host -t termfolio:local .
+  args:
+    chdir: "{{ pi_stack_dir }}/portfolio"
+  become_user: "{{ vault_pi_ssh_user }}"
+  when: portfolio_git.changed
+
+# Pull uniquement les images registry (pas les images build: locales)
+- name: Pull des images registry (hors images locales)
+  shell: |
+    cd {{ pi_stack_dir }} && \
+    docker compose pull seafile seafile-db memcached vaultwarden node-exporter adguard adguard-exporter bentopdf immich-server immich-machine-learning immich-redis immich-db
+  become_user: "{{ vault_pi_ssh_user }}"
+  changed_when: false
+
+- name: Lancement de la Stack Pi
+  shell: "cd {{ pi_stack_dir }} && docker compose up -d --remove-orphans"
+  become_user: "{{ vault_pi_ssh_user }}"

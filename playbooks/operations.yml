@@ -1,0 +1,93 @@
+# ============================================================================
+# Opérations (L5) — Backup ZFS + Alerting Ntfy
+# Usage : ansible-playbook -i inventory.ini playbooks/operations.yml
+#
+# Prérequis : L0-L4 déjà exécutés.
+# Idempotent : peut être relancé autant de fois que nécessaire.
+# ============================================================================
+---
+
+# ============================================================
+# PLAY 1 — Opérations Pi / Cerveau (L5)
+# backup-zfs tourne sur le Pi (données ZFS + envoi chiffré vers VPS)
+# alerting tourne sur le Pi (checks locaux → Ntfy sur le VPS)
+# ============================================================
+- name: "Opérations Cerveau (Pi) — L5"
+  hosts: pi
+  become: true
+  gather_facts: false
+  ignore_unreachable: true
+  vars:
+    ansible_user: "{{ vault_pi_ssh_user }}"
+    ansible_port: 22
+    ansible_ssh_private_key_file: "{{ priv_ssh_key_path }}"
+    alerting_check_zfs: true
+    alerting_check_backup_vps: true
+    alerting_check_backup_usb: true
+
+  pre_tasks:
+    - name: "Détecter le port SSH actif ({{ vault_pi_ssh_port }} ou 22)"
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: "{{ vault_pi_ssh_port }}"
+        timeout: 5
+      delegate_to: localhost
+      ignore_errors: true
+      register: ssh_port_hardened
+      become: false
+      tags: [always]
+
+    - name: "Basculer sur le port SSH durci si disponible"
+      set_fact:
+        ansible_port: "{{ vault_pi_ssh_port if not ssh_port_hardened.failed else 22 }}"
+      tags: [always]
+
+    - name: "Re-gather facts avec le bon port"
+      setup:
+      tags: [always]
+
+  roles:
+    - role: backup-zfs
+      tags: [layer5, backup-zfs]
+    - role: alerting
+      tags: [layer5, alerting]
+
+
+# ============================================================
+# PLAY 2 — Opérations VPS / Sentinelle (L5)
+# alerting uniquement (checks locaux → Ntfy local)
+# ============================================================
+- name: "Opérations Sentinelle (VPS) — L5"
+  hosts: vps
+  become: true
+  gather_facts: false
+  ignore_unreachable: true
+  vars:
+    ansible_user: "{{ vault_ssh_user }}"
+    ansible_port: 22
+    ansible_ssh_private_key_file: "{{ priv_ssh_key_path }}"
+
+  pre_tasks:
+    - name: "Détecter le port SSH actif ({{ vault_ssh_port }} ou 22)"
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: "{{ vault_ssh_port }}"
+        timeout: 5
+      delegate_to: localhost
+      ignore_errors: true
+      register: ssh_port_hardened
+      become: false
+      tags: [always]
+
+    - name: "Basculer sur le port SSH durci si disponible"
+      set_fact:
+        ansible_port: "{{ vault_ssh_port if not ssh_port_hardened.failed else 22 }}"
+      tags: [always]
+
+    - name: "Re-gather facts avec le bon port"
+      setup:
+      tags: [always]
+
+  roles:
+    - role: alerting
+      tags: [layer5, alerting]

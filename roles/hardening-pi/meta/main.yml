@@ -1,0 +1,5 @@
+---
+dependencies:
+  - system-pi
+
+allow_duplicates: false

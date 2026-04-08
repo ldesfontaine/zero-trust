@@ -1,0 +1,9 @@
+# ============================================================================
+# Valeurs Terraform — Copier vers terraform.tfvars et remplir
+# NE PAS commiter terraform.tfvars (secrets)
+# ============================================================================
+
+hostinger_api_token = "CHANGE_ME"
+vps_plan            = "KVM-1"
+vps_location        = "fr"
+ssh_public_key      = "ssh-ed25519 AAAA... admin@homelab"

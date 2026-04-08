@@ -14,10 +14,10 @@ vault_pi_ssh_port: 2223
 # --- Chemins ---
 pi_stack_dir: "/mnt/tank/stack"
 
-# --- Nextcloud ---
-vault_nextcloud_admin_user: "admin"
-vault_nextcloud_admin_password: "CHANGE_ME"
-vault_nextcloud_db_password: "CHANGE_ME"       # openssl rand -hex 16
+# --- Seafile ---
+vault_seafile_admin_email: "CHANGE_ME"         # ex: admin@example.com
+vault_seafile_admin_password: "CHANGE_ME"
+vault_seafile_db_root_password: "CHANGE_ME"    # openssl rand -hex 16
 
 # --- Vaultwarden ---
 vault_vaultwarden_admin_token: "CHANGE_ME"     # openssl rand -base64 48
@@ -28,8 +28,10 @@ vault_adguard_admin_password: "CHANGE_ME"
 # Générer le hash : python3 -c "import bcrypt; print(bcrypt.hashpw(b'<password>', bcrypt.gensalt(10)).decode())"
 vault_adguard_admin_password_hash: "CHANGE_ME"
 
-# --- Grafana ---
-vault_grafana_admin_password: "CHANGE_ME"
+# --- Immich ---
+vault_immich_db_user: "immich"
+vault_immich_db_password: "CHANGE_ME"       # openssl rand -hex 16
+vault_immich_db_name: "immich"
 
 # --- NetBird API Token ---
 # Générer : Dashboard NetBird → team > user → Personal Access Tokens

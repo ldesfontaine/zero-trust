@@ -1,0 +1,5 @@
+---
+dependencies:
+  - docker
+
+allow_duplicates: false

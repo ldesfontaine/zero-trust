@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Managed by Ansible — ne pas modifier manuellement
+# Snapshots ZFS automatiques avec rotation
+set -euo pipefail
+
+POOL="{{ zfs_pool }}"
+TYPE="${1:?Usage: $0 <hourly|daily|monthly> <keep>}"
+KEEP="${2:?Usage: $0 <hourly|daily|monthly> <keep>}"
+SNAP_NAME="${POOL}@auto-${TYPE}-$(date +%Y%m%d-%H%M%S)"
+
+# Créer le snapshot
+zfs snapshot "${SNAP_NAME}"
+echo "[$(date -Iseconds)] Snapshot créé : ${SNAP_NAME}"
+
+# Rotation : supprimer les plus anciens au-delà de KEEP
+mapfile -t OLD_SNAPS < <(
+  zfs list -t snapshot -o name -s creation -H \
+    | grep "^${POOL}@auto-${TYPE}-" \
+    | head -n "-${KEEP}"
+)
+
+for snap in "${OLD_SNAPS[@]}"; do
+  zfs destroy "${snap}"
+  echo "[$(date -Iseconds)] Snapshot supprimé : ${snap}"
+done

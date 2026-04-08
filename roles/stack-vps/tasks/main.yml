@@ -1,0 +1,68 @@
+# ============================================================================
+# Stack VPS — Traefik, CrowdSec, NetBird Server, Node Exporter
+# ============================================================================
+---
+- name: Création des dossiers de la stack VPS
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ vault_ssh_user }}"
+    group: "{{ vault_ssh_user }}"
+    mode: '0755'
+  loop:
+    - "{{ stack_dir }}"
+    - "{{ stack_dir }}/crowdsec"
+    - "{{ stack_dir }}/crowdsec/config"
+    - "{{ stack_dir }}/crowdsec/config/notifications"
+    - "{{ stack_dir }}/netbird"
+    - "{{ stack_dir }}/netbird/data"
+    - "{{ stack_dir }}/traefik"
+    - "{{ stack_dir }}/traefik/dynamic"
+    - "{{ stack_dir }}/ntfy"
+    - "{{ stack_dir }}/ntfy/cache"
+    - "{{ stack_dir }}/ntfy/etc"
+
+- name: Déploiement des configurations (Templates)
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ stack_dir }}/{{ item.dest }}"
+    owner: "{{ vault_ssh_user }}"
+    mode: '0644'
+  loop:
+    - { src: 'docker-compose_vps_yml.j2',    dest: 'docker-compose.yml' }
+    - { src: 'acquis_yaml.j2',               dest: 'acquis.yaml' }
+    - { src: 'netbird_config_yaml.j2',       dest: 'netbird_config.yaml' }
+    - { src: 'traefik_dynamic_yml.j2',       dest: 'traefik/dynamic/pi-public.yml' }
+  notify: Reload Docker Stack VPS
+
+# ── Prometheus CrowdSec ─────────────────────────────────────────────────────
+# Déployé AVANT docker compose up pour que CrowdSec le lise dès le 1er run.
+- name: Déployer config.yaml.local (prometheus CrowdSec activé sur 0.0.0.0)
+  copy:
+    content: |
+      prometheus:
+        enabled: true
+        level: full
+        listen_addr: 0.0.0.0
+        listen_port: 6060
+    dest: "{{ stack_dir }}/crowdsec/config/config.yaml.local"
+    owner: "{{ vault_ssh_user }}"
+    mode: '0644'
+  notify: Restart CrowdSec
+
+# Note : notification CrowdSec → VictoriaMetrics supprimée (Bientôt gère le monitoring)
+
+- name: Lancement de la Stack VPS
+  shell: "cd {{ stack_dir }} && docker compose pull && docker compose up -d --remove-orphans"
+  become_user: "{{ vault_ssh_user }}"
+
+# ── Hub CrowdSec ────────────────────────────────────────────────────────────
+- name: Mise à jour des parsers et scénarios CrowdSec (hub update + upgrade)
+  shell: |
+    docker exec crowdsec cscli hub update && \
+    docker exec crowdsec cscli hub upgrade --force
+  changed_when: false
+  retries: 3
+  delay: 10
+  register: hub_result
+  until: hub_result.rc == 0

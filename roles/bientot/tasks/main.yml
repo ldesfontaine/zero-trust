@@ -1,0 +1,38 @@
+# ============================================================================
+# Bientôt — Projet externe (git clone + docker compose)
+#
+# Panel admin privé : monitoring + métriques + alerting.
+# Remplace Grafana + VictoriaMetrics + vmagent.
+# Accessible UNIQUEMENT via NetBird (admin only).
+# ============================================================================
+---
+
+- name: Créer le répertoire bientot
+  file:
+    path: "{{ bientot_dir }}"
+    state: directory
+    owner: "{{ vault_pi_ssh_user }}"
+    group: "{{ vault_pi_ssh_user }}"
+    mode: '0755'
+
+- name: Cloner ou mettre à jour le repo bientot
+  ansible.builtin.git:
+    repo: "{{ bientot_repo }}"
+    dest: "{{ bientot_dir }}"
+    version: "{{ bientot_version }}"
+    force: true
+  become_user: "{{ vault_pi_ssh_user }}"
+  register: bientot_git
+
+- name: Déployer le fichier .env (variables Ansible → config)
+  template:
+    src: bientot.env.j2
+    dest: "{{ bientot_dir }}/.env"
+    owner: "{{ vault_pi_ssh_user }}"
+    mode: '0600'
+  register: bientot_env
+
+- name: Lancer le container bientot
+  shell: "cd {{ bientot_dir }} && docker compose up -d --remove-orphans"
+  become_user: "{{ vault_pi_ssh_user }}"
+  when: bientot_git.changed or bientot_env.changed

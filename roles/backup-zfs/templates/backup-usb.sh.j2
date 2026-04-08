@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# Managed by Ansible — ne pas modifier manuellement
+# Backup USB : déclenché après déverrouillage LUKS du SSD
+# Étapes : snapshot ZFS → zfs send (incrémental) → vérification → éjection
+set -euo pipefail
+
+POOL="{{ zfs_pool }}"
+MOUNT_POINT="{{ backup_usb_mount_point }}"
+STATUS_DIR="{{ backup_status_dir }}"
+LOG_DIR="{{ backup_log_dir }}"
+SNAP_KEEP={{ backup_usb_snap_keep }}
+NTFY_URL="{{ ntfy_server_url }}/{{ ntfy_backup_topic }}"
+SNAP_NAME="${POOL}@backup-usb-$(date +%Y%m%d-%H%M%S)"
+LUKS_NAME="backup"
+LOG_PREFIX="[$(date -Iseconds)]"
+
+notify() {
+  local title="$1" message="$2" priority="${3:-default}" tags="${4:-}"
+  curl -sf -H "Title: ${title}" -H "Priority: ${priority}" -H "Tags: ${tags}" \
+    -d "${message}" "${NTFY_URL}" >/dev/null 2>&1 || true
+}
+
+cleanup_on_error() {
+  notify "Backup USB ÉCHOUÉ" "Erreur durant le backup — consulter les logs" "urgent" "x"
+  zfs destroy "${SNAP_NAME}" 2>/dev/null || true
+}
+trap cleanup_on_error ERR
+
+# Vérifier que le SSD est monté
+if ! mountpoint -q "${MOUNT_POINT}"; then
+  echo "${LOG_PREFIX} SSD USB non monté sur ${MOUNT_POINT}"
+  exit 1
+fi
+
+echo "${LOG_PREFIX} Début du backup USB"
+notify "Backup USB" "Backup lancé" "default" "floppy_disk"
+
+# --- 1. Snapshot ZFS ---
+echo "${LOG_PREFIX} Snapshot ZFS : ${SNAP_NAME}"
+zfs snapshot "${SNAP_NAME}"
+
+# --- 2. ZFS send (incrémental si possible) ---
+# Chercher le dernier snapshot USB commun
+LAST_USB_SNAP=$(zfs list -t snapshot -o name -s creation -H \
+  | grep "^${POOL}@backup-usb-" \
+  | grep -v "$(basename "${SNAP_NAME}")" \
+  | tail -1 || true)
+
+if [ -n "${LAST_USB_SNAP}" ] && zfs list -t snapshot "${LAST_USB_SNAP}" >/dev/null 2>&1; then
+  echo "${LOG_PREFIX} Envoi incrémental depuis ${LAST_USB_SNAP}"
+  zfs send -i "${LAST_USB_SNAP}" "${SNAP_NAME}" | pv -trab > "${MOUNT_POINT}/$(basename "${SNAP_NAME}").zfs"
+else
+  echo "${LOG_PREFIX} Premier backup — envoi complet"
+  zfs send "${SNAP_NAME}" | pv -trab > "${MOUNT_POINT}/$(basename "${SNAP_NAME}").zfs"
+fi
+
+BACKUP_SIZE=$(stat -c%s "${MOUNT_POINT}/$(basename "${SNAP_NAME}").zfs")
+BACKUP_SIZE_GB=$((BACKUP_SIZE / 1024 / 1024 / 1024))
+
+# --- 3. Vérification intégrité ---
+echo "${LOG_PREFIX} Vérification intégrité"
+CHECKSUM=$(sha256sum "${MOUNT_POINT}/$(basename "${SNAP_NAME}").zfs" | cut -d' ' -f1)
+
+# --- 4. Rotation des anciens snapshots sur le SSD ---
+mapfile -t OLD_USB_FILES < <(
+  ls -1t "${MOUNT_POINT}"/backup-usb-*.zfs 2>/dev/null | tail -n "+$((SNAP_KEEP + 1))"
+)
+for old_file in "${OLD_USB_FILES[@]}"; do
+  rm -f "${old_file}"
+  echo "${LOG_PREFIX} Ancien backup supprimé : ${old_file}"
+done
+
+# Rotation des snapshots ZFS de backup USB
+mapfile -t OLD_USB_SNAPS < <(
+  zfs list -t snapshot -o name -s creation -H \
+    | grep "^${POOL}@backup-usb-" \
+    | head -n "-${SNAP_KEEP}"
+)
+for snap in "${OLD_USB_SNAPS[@]}"; do
+  zfs destroy "${snap}"
+  echo "${LOG_PREFIX} Snapshot supprimé : ${snap}"
+done
+
+# --- 5. Écrire le statut JSON ---
+cat > "${STATUS_DIR}/usb-latest.json" <<EOJSON
+{
+  "type": "usb",
+  "timestamp": "$(date -Iseconds)",
+  "success": true,
+  "size_bytes": ${BACKUP_SIZE},
+  "snapshot_name": "${SNAP_NAME}",
+  "checksum": "sha256:${CHECKSUM}",
+  "days_since_last": 0
+}
+EOJSON
+
+# --- 6. Démontage + fermeture LUKS + éjection ---
+echo "${LOG_PREFIX} Fermeture et éjection du SSD"
+sync
+umount "${MOUNT_POINT}"
+cryptsetup luksClose "${LUKS_NAME}"
+
+# Éjecter le disque USB
+LUKS_DEVICE=$(blkid -U "{{ backup_usb_luks_uuid }}" 2>/dev/null || true)
+if [ -n "${LUKS_DEVICE}" ]; then
+  USB_DEVICE=$(echo "${LUKS_DEVICE}" | sed 's/[0-9]*$//')
+  udisksctl power-off -b "${USB_DEVICE}" 2>/dev/null || true
+fi
+
+echo "${LOG_PREFIX} Backup USB terminé (${BACKUP_SIZE_GB} Go)"
+notify "Backup USB terminé" "Backup ${BACKUP_SIZE_GB} Go, intégrité OK, SSD chiffré fermé et éjecté. Tu peux débrancher." "default" "white_check_mark"

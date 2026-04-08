@@ -1,0 +1,6 @@
+---
+- name: Reload Docker Stack VPS
+  shell: "cd {{ stack_dir }} && docker compose up -d --remove-orphans"
+
+- name: Restart CrowdSec
+  shell: "cd {{ stack_dir }} && docker compose restart crowdsec"

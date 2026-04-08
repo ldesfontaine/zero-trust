@@ -1,0 +1,101 @@
+# ============================================================================
+# Bootstrap (L0) — Création des utilisateurs admin sur machines vierges
+# Usage : ansible-playbook -i inventory.ini playbooks/bootstrap.yml
+#
+# Ce playbook ne tourne qu'une fois (Run 0). Les runs suivants l'ignorent
+# grâce à ignore_unreachable (root/admin ne sera plus accessible).
+# ============================================================================
+---
+
+# ============================================================
+# PLAY 1 — Bootstrap VPS (L0)
+# ============================================================
+- name: "Bootstrap VPS — Création de l'utilisateur admin"
+  hosts: vps
+  become: true
+  gather_facts: false
+  ignore_unreachable: true
+  vars:
+    ansible_user: root
+    ansible_password: "{{ vault_ssh_password }}"
+    ansible_port: 22
+
+  tasks:
+    - name: "Bootstrap VPS : Création de l'utilisateur lucas"
+      user:
+        name: "{{ vault_ssh_user }}"
+        shell: /bin/bash
+        groups: sudo
+        append: yes
+
+    - name: "Bootstrap VPS : Sudo sans mot de passe pour lucas"
+      copy:
+        content: "{{ vault_ssh_user }} ALL=(ALL) NOPASSWD:ALL\n"
+        dest: "/etc/sudoers.d/{{ vault_ssh_user }}"
+        mode: '0440'
+        validate: '/usr/sbin/visudo -cf %s'
+
+    - name: "Bootstrap VPS : Injection de la clé SSH publique"
+      ansible.posix.authorized_key:
+        user: "{{ vault_ssh_user }}"
+        state: present
+        key: "{{ lookup('file', ssh_key_path) }}"
+
+    - name: "Bootstrap VPS : Création de l'utilisateur deploy (CI/CD)"
+      user:
+        name: "{{ vault_deploy_user }}"
+        shell: /bin/bash
+        groups: docker
+        append: yes
+        create_home: yes
+
+    - name: "Bootstrap VPS : Injection de la clé SSH deploy"
+      ansible.posix.authorized_key:
+        user: "{{ vault_deploy_user }}"
+        state: present
+        key: "{{ lookup('file', deploy_ssh_key_path) }}"
+
+    - name: "Bootstrap VPS : Sudoers limité pour deploy (docker + git)"
+      copy:
+        content: |
+          {{ vault_deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/docker, /usr/bin/docker-compose, /usr/bin/git
+          {{ vault_deploy_user }} ALL=(ALL) NOPASSWD: /usr/local/bin/ansible-playbook
+        dest: "/etc/sudoers.d/{{ vault_deploy_user }}"
+        mode: '0440'
+        validate: '/usr/sbin/visudo -cf %s'
+
+
+# ============================================================
+# PLAY 2 — Bootstrap Pi (L0)
+# ============================================================
+- name: "Bootstrap Pi — Création de l'utilisateur admin"
+  hosts: pi
+  become: true
+  gather_facts: false
+  ignore_unreachable: true
+  vars:
+    ansible_user: "{{ vault_pi_bootstrap_user }}"
+    ansible_password: "{{ vault_pi_bootstrap_password }}"
+    ansible_port: 22
+    ansible_ssh_extra_args: "-o PreferredAuthentications=password -o PubkeyAuthentication=no"
+
+  tasks:
+    - name: "Bootstrap Pi : Création de l'utilisateur {{ vault_pi_ssh_user }}"
+      user:
+        name: "{{ vault_pi_ssh_user }}"
+        shell: /bin/bash
+        groups: sudo
+        append: yes
+
+    - name: "Bootstrap Pi : Sudo sans mot de passe pour {{ vault_pi_ssh_user }}"
+      copy:
+        content: "{{ vault_pi_ssh_user }} ALL=(ALL) NOPASSWD:ALL\n"
+        dest: "/etc/sudoers.d/{{ vault_pi_ssh_user }}"
+        mode: '0440'
+        validate: '/usr/sbin/visudo -cf %s'
+
+    - name: "Bootstrap Pi : Injection de la clé SSH publique"
+      ansible.posix.authorized_key:
+        user: "{{ vault_pi_ssh_user }}"
+        state: present
+        key: "{{ lookup('file', ssh_key_path) }}"

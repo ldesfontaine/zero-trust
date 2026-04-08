@@ -1,0 +1,5 @@
+---
+- name: Restart Bouncer
+  systemd:
+    name: crowdsec-firewall-bouncer
+    state: restarted

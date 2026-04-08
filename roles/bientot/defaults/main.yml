@@ -1,0 +1,11 @@
+---
+# ============================================================================
+# Bientôt — Variables par défaut
+# Panel admin privé : monitoring + métriques + alerting
+# Accessible UNIQUEMENT via NetBird (admin only)
+# ============================================================================
+
+bientot_repo: "https://github.com/ldesfontaine/bientot.git"
+bientot_version: "main"
+bientot_dir: "{{ pi_stack_dir }}/bientot"
+bientot_port: "3001"

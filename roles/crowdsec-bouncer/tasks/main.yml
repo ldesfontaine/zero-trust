@@ -1,0 +1,49 @@
+# ============================================================================
+# CrowdSec Firewall Bouncer — Installé sur l'HÔTE VPS (pas dans Docker)
+# ============================================================================
+---
+- name: Ajouter la clé GPG CrowdSec
+  shell: |
+    curl -fsSL https://packagecloud.io/crowdsec/crowdsec/gpgkey | \
+    gpg --dearmor -o /etc/apt/keyrings/crowdsec_crowdsec-archive-keyring.gpg
+  args:
+    creates: /etc/apt/keyrings/crowdsec_crowdsec-archive-keyring.gpg
+
+- name: Ajouter le dépôt CrowdSec
+  copy:
+    content: |
+      deb [signed-by=/etc/apt/keyrings/crowdsec_crowdsec-archive-keyring.gpg] https://packagecloud.io/crowdsec/crowdsec/debian/ bookworm main
+    dest: /etc/apt/sources.list.d/crowdsec_crowdsec.list
+    mode: '0644'
+
+- name: Mettre à jour le cache apt pour CrowdSec
+  apt:
+    update_cache: yes
+ 
+- name: Installer le bouncer firewall CrowdSec (nftables)
+  apt:
+    name: crowdsec-firewall-bouncer-nftables
+    state: latest
+ 
+- name: Attendre que le LAPI CrowdSec soit disponible
+  wait_for:
+    host: 127.0.0.1
+    port: 8080
+    timeout: 60
+    delay: 5
+ 
+- name: Déployer la configuration du bouncer
+  template:
+    src: crowdsec-firewall-bouncer_yaml.j2
+    dest: /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml
+    owner: root
+    group: root
+    mode: '0600'
+  notify: Restart Bouncer
+ 
+- name: Activer et démarrer le bouncer firewall CrowdSec
+  systemd:
+    name: crowdsec-firewall-bouncer
+    state: started
+    enabled: yes
+ 

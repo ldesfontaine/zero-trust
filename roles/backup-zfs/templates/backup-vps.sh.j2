@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+# Managed by Ansible — ne pas modifier manuellement
+# Backup quotidien : collecte données → GPG → envoi VPS via NetBird → notification Ntfy
+set -euo pipefail
+
+POOL="{{ zfs_pool }}"
+STAGING="{{ backup_staging_dir }}"
+STATUS_DIR="{{ backup_status_dir }}"
+LOG_PREFIX="[$(date -Iseconds)]"
+SNAP_NAME="${POOL}@backup-vps-daily"
+ARCHIVE_NAME="backup-vps-$(date +%Y%m%d-%H%M%S).tar.gz.gpg"
+GPG_RECIPIENT="{{ backup_vps_gpg_recipient }}"
+DEST_HOST="{{ backup_vps_dest_host }}"
+DEST_DIR="{{ backup_vps_dest_dir }}"
+DEST_USER="{{ backup_vps_dest_user }}"
+RETENTION_DAYS="{{ backup_vps_retention_days }}"
+NTFY_URL="{{ ntfy_server_url }}/{{ ntfy_backup_topic }}"
+SSH_KEY="{{ priv_ssh_key_path }}"
+SSH_OPTS="-o StrictHostKeyChecking=no -i ${SSH_KEY}"
+
+notify() {
+  local title="$1" message="$2" priority="${3:-default}" tags="${4:-}"
+  curl -sf -H "Title: ${title}" -H "Priority: ${priority}" -H "Tags: ${tags}" \
+    -d "${message}" "${NTFY_URL}" >/dev/null 2>&1 || true
+}
+
+cleanup() {
+  rm -f "${STAGING}"/*.tar.gz "${STAGING}"/*.gpg /tmp/seafile-db.sql 2>/dev/null || true
+  zfs destroy "${SNAP_NAME}" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+echo "${LOG_PREFIX} Début du backup VPS"
+
+# --- 1. Dumps pré-backup (hooks déclarés par les rôles) ---
+{% raw %}
+BACKUP_MANIFESTS=()
+for manifest in /etc/backup.d/*.yml; do
+  [ -f "${manifest}" ] || continue
+  BACKUP_MANIFESTS+=("${manifest}")
+done
+{% endraw %}
+
+# Dump MariaDB Seafile si le container tourne
+if docker ps --format '{{ '{{' }}.Names{{ '}}' }}' | grep -q 'seafile-db'; then
+  echo "${LOG_PREFIX} Dump MariaDB Seafile"
+  docker exec seafile-db mysqldump --all-databases > /tmp/seafile-db.sql
+fi
+
+# --- 2. Snapshot ZFS temporaire ---
+echo "${LOG_PREFIX} Snapshot ZFS : ${SNAP_NAME}"
+zfs snapshot "${SNAP_NAME}"
+
+# --- 3. Collecter les données depuis le snapshot ---
+echo "${LOG_PREFIX} Collecte des données"
+SNAP_MOUNT="/mnt/tank/.zfs/snapshot/backup-vps-daily"
+
+# Construire la liste des chemins à sauvegarder depuis les manifests
+BACKUP_PATHS=()
+for manifest in /etc/backup.d/*.yml; do
+  [ -f "${manifest}" ] || continue
+  # Extraire les paths (format simple : "  - /chemin/vers/données")
+  while IFS= read -r path; do
+    path="${path#*- }"
+    path="${path## }"
+    # Convertir le chemin absolu en chemin relatif au snapshot
+    if [ -d "${SNAP_MOUNT}${path#/mnt/tank}" ] || [ -f "${SNAP_MOUNT}${path#/mnt/tank}" ]; then
+      BACKUP_PATHS+=("${SNAP_MOUNT}${path#/mnt/tank}")
+    elif [ -d "${path}" ] || [ -f "${path}" ]; then
+      BACKUP_PATHS+=("${path}")
+    fi
+  done < <(grep -E '^\s+-\s+' "${manifest}" 2>/dev/null || true)
+done
+
+# Ajouter le dump SQL si présent
+[ -f /tmp/seafile-db.sql ] && BACKUP_PATHS+=("/tmp/seafile-db.sql")
+
+if [ ${#BACKUP_PATHS[@]} -eq 0 ]; then
+  echo "${LOG_PREFIX} Aucune donnée à sauvegarder"
+  notify "Backup VPS" "Aucune donnée à sauvegarder — vérifier les manifests" "high" "warning"
+  exit 0
+fi
+
+# --- 4. Archiver + chiffrer GPG ---
+echo "${LOG_PREFIX} Archivage et chiffrement GPG"
+tar -czf "${STAGING}/backup.tar.gz" "${BACKUP_PATHS[@]}" 2>/dev/null
+gpg --batch --yes --trust-model always --encrypt --recipient "${GPG_RECIPIENT}" \
+  --output "${STAGING}/${ARCHIVE_NAME}" "${STAGING}/backup.tar.gz"
+rm -f "${STAGING}/backup.tar.gz"
+
+ARCHIVE_SIZE=$(stat -c%s "${STAGING}/${ARCHIVE_NAME}")
+ARCHIVE_SIZE_MB=$((ARCHIVE_SIZE / 1024 / 1024))
+ARCHIVE_CHECKSUM=$(sha256sum "${STAGING}/${ARCHIVE_NAME}" | cut -d' ' -f1)
+
+# --- 5. Envoyer au VPS via NetBird ---
+echo "${LOG_PREFIX} Envoi vers le VPS (${DEST_HOST})"
+ssh ${SSH_OPTS} "${DEST_USER}@${DEST_HOST}" "mkdir -p ${DEST_DIR}"
+scp ${SSH_OPTS} "${STAGING}/${ARCHIVE_NAME}" "${DEST_USER}@${DEST_HOST}:${DEST_DIR}/"
+
+# Vérifier le checksum distant
+REMOTE_CHECKSUM=$(ssh ${SSH_OPTS} "${DEST_USER}@${DEST_HOST}" "sha256sum ${DEST_DIR}/${ARCHIVE_NAME}" | cut -d' ' -f1)
+if [ "${ARCHIVE_CHECKSUM}" != "${REMOTE_CHECKSUM}" ]; then
+  echo "${LOG_PREFIX} ERREUR : checksum mismatch !"
+  notify "Backup VPS ÉCHOUÉ" "Checksum mismatch après transfert" "urgent" "x"
+  exit 1
+fi
+
+# --- 6. Rotation sur le VPS ---
+echo "${LOG_PREFIX} Rotation des anciens backups (> ${RETENTION_DAYS} jours)"
+ssh ${SSH_OPTS} "${DEST_USER}@${DEST_HOST}" \
+  "find ${DEST_DIR} -name 'backup-vps-*.tar.gz.gpg' -mtime +${RETENTION_DAYS} -delete"
+
+# Espace disque restant sur le VPS
+VPS_DISK_REMAINING=$(ssh ${SSH_OPTS} "${DEST_USER}@${DEST_HOST}" \
+  "df --output=avail /opt | tail -1" | tr -d ' ')
+VPS_DISK_REMAINING_GB=$((VPS_DISK_REMAINING / 1024 / 1024))
+
+# --- 7. Écrire le statut JSON ---
+cat > "${STATUS_DIR}/vps-latest.json" <<EOJSON
+{
+  "type": "vps",
+  "timestamp": "$(date -Iseconds)",
+  "success": true,
+  "size_bytes": ${ARCHIVE_SIZE},
+  "checksum": "sha256:${ARCHIVE_CHECKSUM}",
+  "files_backed_up": ${#BACKUP_PATHS[@]},
+  "vps_disk_remaining_gb": ${VPS_DISK_REMAINING_GB}
+}
+EOJSON
+
+# --- 8. Notification ---
+echo "${LOG_PREFIX} Backup VPS terminé (${ARCHIVE_SIZE_MB} Mo)"
+notify "Backup VPS OK" "Backup ${ARCHIVE_SIZE_MB} Mo chiffré envoyé, ${VPS_DISK_REMAINING_GB} Go restants sur le VPS" "default" "white_check_mark"

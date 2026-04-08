@@ -1,0 +1,8 @@
+# Déclaration backup modulaire — veille-secu
+---
+backup_vps:
+  enabled: true
+  priority: normal
+  paths:
+    - "{{ pi_stack_dir }}/veille-secu/data/veille.db"
+  estimated_size: "10M"

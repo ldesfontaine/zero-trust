@@ -1,0 +1,16 @@
+# ============================================================================
+# Onboard — Provisionnement d'une nouvelle machine (L0-L3)
+# Usage : ansible-playbook -i inventory.ini playbooks/onboard.yml --limit brain-02
+#
+# Ce playbook enchaîne bootstrap + infrastructure pour une nouvelle machine.
+# Après exécution : la machine est dans le mesh, prête pour services.yml.
+#
+# Prérequis :
+#   - Machine accessible en SSH (password ou clé selon le type)
+#   - Entrée ajoutée dans inventory.ini
+#   - host_vars créé et chiffré (ansible-vault)
+# ============================================================================
+---
+
+- import_playbook: bootstrap.yml
+- import_playbook: infrastructure.yml

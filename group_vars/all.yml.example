@@ -10,15 +10,18 @@ netbird_server_version: "latest"
 netbird_dashboard_version: "latest"
 node_exporter_version: "v1.9.0"
 mariadb_version: "11"
-nextcloud_version: "30"
+seafile_version: "11.0-latest"
+memcached_version: "1.6"
 vaultwarden_version: "1.32.1"
-grafana_version: "11.4.0"
-victoriametrics_version: "v1.106.1"
 adguard_version: "v0.107.55"
 adguard_exporter_version: "latest"
 bentopdf_image: "ghcr.io/alam00000/bentopdf"
 bentopdf_version: "latest"
 nginx_version: "alpine"
+ntfy_version: "v2.11.0"
+immich_version: "v1.134.0"
+immich_redis_version: "7-alpine"
+immich_db_version: "pg16-v0.3.0"
 
 # --- Domaine de base ---
 vault_base_domain: "CHANGE_ME"                 # ex: example.com
@@ -32,10 +35,14 @@ bentopdf_subdomain: "pdf"
 portfolio_subdomain: "portfolio"
 
 # --- Sous-domaines Pi privés (accessibles uniquement via client NetBird) ---
-nextcloud_subdomain: "cloud"
+seafile_subdomain: "cloud"
 vaultwarden_subdomain: "vault"
-grafana_subdomain: "grafana"
 adguard_subdomain: "adguard"
+immich_subdomain: "photos"
+bientot_subdomain: "bientot"
+
+# --- Sous-domaines VPS privés (accessibles via client NetBird) ---
+ntfy_subdomain: "ntfy"
 
 # --- FQDNs dérivés (calculés — ne pas modifier) ---
 netbird_fqdn: "{{ netbird_subdomain }}.{{ vault_base_domain }}"
@@ -43,6 +50,10 @@ netbird_fqdn: "{{ netbird_subdomain }}.{{ vault_base_domain }}"
 # --- SSH ---
 ssh_key_path: "~/.ssh/id_ed25519_vps_homelab.pub"
 priv_ssh_key_path: "~/.ssh/id_ed25519_vps_homelab"
+
+# --- User deploy (CI/CD) ---
+vault_deploy_user: "deploy"
+deploy_ssh_key_path: "~/.ssh/id_ed25519_deploy.pub"
 
 # --- Connexion finale (Play 4) ---
 vault_pi_ssh_user: "lucas"

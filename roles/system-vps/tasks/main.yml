@@ -1,0 +1,113 @@
+# ============================================================================
+# Système VPS — Mise à jour, outils, firewall
+# Migration NPM → Traefik :
+#   - Plus de port 49152:49200 (coturn supprimé)
+#   - Port 33073 gardé pour backward compat gRPC NetBird
+#   - Port 3478 UDP pour STUN NetBird
+#   - Traefik gère 80/443 nativement
+# ============================================================================
+ 
+- name: Mettre à jour le cache apt
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+ 
+- name: Mettre à jour tous les paquets
+  apt:
+    upgrade: safe
+  environment:
+    NEEDRESTART_MODE: "a"   # auto-restart services sans prompt (évite le hang interactif)
+
+# Reset la connexion SSH après l'upgrade : si openssh-server a été mis à jour,
+# sshd a redémarré et le socket ControlMaster Ansible est périmé.
+# Ce meta task force Ansible à se reconnecter proprement.
+- name: Réinitialiser la connexion SSH après apt upgrade (sshd potentiellement redémarré)
+  meta: reset_connection
+
+- name: Installer les outils de base
+  apt:
+    name:
+      - curl
+      - ufw
+      - python3-pip
+      - git
+      - nftables
+      - gnupg
+      - unattended-upgrades
+      - apt-listchanges
+    state: present
+ 
+- name: Activer les mises à jour automatiques
+  copy:
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::AutocleanInterval "7";
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: '0644'
+ 
+- name: Configurer les sources des mises à jour automatiques
+  copy:
+    content: |
+      Unattended-Upgrade::Allowed-Origins {
+        "${distro_id}:${distro_codename}";
+        "${distro_id}:${distro_codename}-security";
+        "${distro_id}ESMApps:${distro_codename}-apps-security";
+        "${distro_id}ESM:${distro_codename}-infra-security";
+        "Docker:${distro_codename}";
+      };
+      Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+      Unattended-Upgrade::Automatic-Reboot "false";
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    mode: '0644'
+ 
+# --- Firewall UFW VPS ---
+- name: UFW - Autoriser SSH bootstrap (port 22)
+  ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+ 
+- name: UFW - Autoriser HTTP (Traefik + Let's Encrypt challenge)
+  ufw:
+    rule: allow
+    port: "80"
+    proto: tcp
+ 
+- name: UFW - Autoriser HTTPS (Traefik)
+  ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+ 
+- name: UFW - Autoriser NetBird gRPC backward compat (33073)
+  ufw:
+    rule: allow
+    port: "33073"
+    proto: tcp
+ 
+- name: UFW - Autoriser NetBird STUN (3478 UDP)
+  ufw:
+    rule: allow
+    port: "3478"
+    proto: udp
+
+- name: UFW - Autoriser node-exporter depuis le mesh NetBird (Pi → VPS)
+  ufw:
+    rule: allow
+    port: "9100"
+    proto: tcp
+    src: "100.64.0.0/10"
+
+- name: UFW - Autoriser CrowdSec prometheus depuis le mesh NetBird (Pi → VPS)
+  ufw:
+    rule: allow
+    port: "6060"
+    proto: tcp
+    src: "100.64.0.0/10"
+
+- name: UFW - Activer le pare-feu
+  ufw:
+    state: enabled
+    policy: deny

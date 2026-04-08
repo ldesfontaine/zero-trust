@@ -1,0 +1,59 @@
+name: CI - Lint & Syntax Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Ansible Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Ansible and Ansible-Lint
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible ansible-lint
+
+      - name: Install required collections
+        run: ansible-galaxy collection install -r requirement.yml
+
+      - name: Run ansible-lint
+        run: ansible-lint .
+
+  syntax-check:
+    name: Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Ansible
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible
+
+      - name: Install required collections
+        run: ansible-galaxy collection install -r requirement.yml
+
+      - name: Create dummy inventory and vault for syntax check
+        run: |
+          cp inventory.ini.example inventory.ini
+          echo "dummy-vault-password" > /tmp/vault_pass
+
+      - name: Run syntax check
+        run: ansible-playbook -i inventory.ini setup.yml --syntax-check --vault-password-file /tmp/vault_pass

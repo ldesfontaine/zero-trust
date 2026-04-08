@@ -1,0 +1,117 @@
+# ============================================================================
+# Backup ZFS — Snapshots automatiques + backup chiffré vers VPS
+#
+# Ce rôle configure :
+#   1. Arborescence de backup sur le Pi
+#   2. Snapshots ZFS automatiques (hourly/daily/monthly)
+#   3. Script de backup VPS quotidien (collecte + GPG + envoi + notification)
+#   4. Script de backup USB (déclenché au branchement du SSD)
+#   5. Crons et udev rule
+# ============================================================================
+---
+
+# --- Arborescence ---
+- name: Créer les répertoires de backup
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0750'
+  loop:
+    - "{{ backup_base_dir }}"
+    - "{{ backup_status_dir }}"
+    - "{{ backup_staging_dir }}"
+    - "{{ backup_log_dir }}"
+
+# --- Importer la clé GPG publique pour chiffrement ---
+- name: Copier la clé GPG publique de backup
+  copy:
+    src: backup-gpg-public.asc
+    dest: /root/.backup-gpg-public.asc
+    owner: root
+    mode: '0600'
+  register: gpg_key_file
+
+- name: Importer la clé GPG publique dans le trousseau root
+  command: gpg --batch --import /root/.backup-gpg-public.asc
+  when: gpg_key_file.changed
+  changed_when: true
+
+# --- Scripts ---
+- name: Déployer le script de snapshots ZFS automatiques
+  template:
+    src: zfs-auto-snapshot.sh.j2
+    dest: /usr/local/bin/zfs-auto-snapshot.sh
+    owner: root
+    mode: '0750'
+
+- name: Déployer le script de backup VPS quotidien
+  template:
+    src: backup-vps.sh.j2
+    dest: /usr/local/bin/backup-vps.sh
+    owner: root
+    mode: '0750'
+
+- name: Déployer le script de backup USB
+  template:
+    src: backup-usb.sh.j2
+    dest: /usr/local/bin/backup-usb.sh
+    owner: root
+    mode: '0750'
+  when: backup_usb_luks_uuid | length > 0
+
+# --- Crons ---
+- name: Cron snapshot ZFS horaire
+  cron:
+    name: "zfs-snapshot-hourly"
+    minute: "0"
+    job: "/usr/local/bin/zfs-auto-snapshot.sh hourly {{ zfs_snap_hourly_keep }} >> {{ backup_log_dir }}/snapshot.log 2>&1"
+
+- name: Cron snapshot ZFS quotidien
+  cron:
+    name: "zfs-snapshot-daily"
+    minute: "0"
+    hour: "0"
+    job: "/usr/local/bin/zfs-auto-snapshot.sh daily {{ zfs_snap_daily_keep }} >> {{ backup_log_dir }}/snapshot.log 2>&1"
+
+- name: Cron snapshot ZFS mensuel
+  cron:
+    name: "zfs-snapshot-monthly"
+    minute: "0"
+    hour: "1"
+    day: "1"
+    job: "/usr/local/bin/zfs-auto-snapshot.sh monthly {{ zfs_snap_monthly_keep }} >> {{ backup_log_dir }}/snapshot.log 2>&1"
+
+- name: Cron backup VPS quotidien
+  cron:
+    name: "backup-vps-daily"
+    minute: "{{ backup_vps_cron_minute }}"
+    hour: "{{ backup_vps_cron_hour }}"
+    job: "/usr/local/bin/backup-vps.sh >> {{ backup_log_dir }}/backup-vps.log 2>&1"
+  when: backup_vps_enabled
+
+# --- udev rule pour le SSD USB ---
+- name: Déployer la règle udev pour le SSD USB de backup
+  template:
+    src: 99-backup-usb.rules.j2
+    dest: /etc/udev/rules.d/99-backup-usb.rules
+    owner: root
+    mode: '0644'
+  notify: Recharger les règles udev
+  when: backup_usb_luks_uuid | length > 0
+
+# --- Logrotate ---
+- name: Configurer logrotate pour les logs de backup
+  copy:
+    content: |
+      {{ backup_log_dir }}/*.log {
+          weekly
+          rotate 4
+          compress
+          missingok
+          notifempty
+      }
+    dest: /etc/logrotate.d/backup-zfs
+    owner: root
+    mode: '0644'
