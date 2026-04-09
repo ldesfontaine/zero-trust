@@ -11,49 +11,49 @@ jobs:
     name: Ansible Lint
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Récupérer le code
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Configurer Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Install Ansible and Ansible-Lint
+      - name: Installer Ansible et Ansible-Lint
         run: |
           python -m pip install --upgrade pip
           pip install ansible ansible-lint
 
-      - name: Install required collections
+      - name: Installer les collections requises
         run: ansible-galaxy collection install -r requirement.yml
 
-      - name: Run ansible-lint
+      - name: Lancer ansible-lint
         run: ansible-lint .
 
   syntax-check:
     name: Syntax Check
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Récupérer le code
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Configurer Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Install Ansible
+      - name: Installer Ansible
         run: |
           python -m pip install --upgrade pip
           pip install ansible
 
-      - name: Install required collections
+      - name: Installer les collections requises
         run: ansible-galaxy collection install -r requirement.yml
 
-      - name: Create dummy inventory and vault for syntax check
+      - name: Créer l'inventaire et le vault factices pour le syntax check
         run: |
           cp inventory.ini.example inventory.ini
           echo "dummy-vault-password" > /tmp/vault_pass
 
-      - name: Run syntax check
+      - name: Vérifier la syntaxe des playbooks
         run: ansible-playbook -i inventory.ini setup.yml --syntax-check --vault-password-file /tmp/vault_pass

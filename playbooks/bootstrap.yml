@@ -11,7 +11,7 @@
 # PLAY 1 — Bootstrap VPS (L0)
 # ============================================================
 - name: "Bootstrap VPS — Création de l'utilisateur admin"
-  hosts: vps
+  hosts: dmz
   become: true
   gather_facts: false
   ignore_unreachable: true
@@ -69,7 +69,7 @@
 # PLAY 2 — Bootstrap Pi (L0)
 # ============================================================
 - name: "Bootstrap Pi — Création de l'utilisateur admin"
-  hosts: pi
+  hosts: lan
   become: true
   gather_facts: false
   ignore_unreachable: true

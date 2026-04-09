@@ -1,9 +1,9 @@
 # ============================================================================
 # Restore — Restauration de services depuis backup VPS ou USB
 # Usage :
-#   ansible-playbook playbooks/restore.yml --tags vaultwarden --limit pi
-#   ansible-playbook playbooks/restore.yml --limit pi -e restore_source=usb
-#   ansible-playbook playbooks/restore.yml --limit pi -e restore_source=vps
+#   ansible-playbook playbooks/restore.yml --tags vaultwarden --limit lan
+#   ansible-playbook playbooks/restore.yml --limit lan -e restore_source=usb
+#   ansible-playbook playbooks/restore.yml --limit lan -e restore_source=vps
 #
 # Sources de restauration :
 #   - vps : télécharge le dernier backup chiffré GPG depuis le VPS via NetBird
@@ -16,7 +16,7 @@
 ---
 
 - name: "Restauration services — Brain (Pi)"
-  hosts: pi
+  hosts: lan
   become: true
   gather_facts: true
   vars:

@@ -2,7 +2,7 @@
 # CD — Deploy manuel via GitHub Actions (workflow_dispatch)
 #
 # Flow : GitHub Runner → SSH VPS (bastion) → ansible-playbook sur le VPS
-#        Le VPS relaye vers le Pi via NetBird si --limit inclut des machines LAN.
+#        Le VPS relaye vers le LAN via NetBird si --limit inclut des machines LAN.
 #
 # Prérequis GitHub Secrets :
 #   VPS_HOST            — IP publique du VPS
@@ -47,12 +47,12 @@ on:
 
 jobs:
   deploy:
-    name: "Deploy (${{ inputs.mode }})"
+    name: "Déployer (${{ inputs.mode }})"
     runs-on: ubuntu-latest
     environment: production
 
     steps:
-      - name: Valider les paramètres
+      - name: Afficher les paramètres
         run: |
           echo "Playbook: ${{ inputs.playbook }}"
           echo "Tags: ${{ inputs.tags }}"

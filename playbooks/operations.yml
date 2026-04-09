@@ -13,7 +13,7 @@
 # alerting tourne sur le Pi (checks locaux → Ntfy sur le VPS)
 # ============================================================
 - name: "Opérations Cerveau (Pi) — L5"
-  hosts: pi
+  hosts: lan
   become: true
   gather_facts: false
   ignore_unreachable: true
@@ -58,7 +58,7 @@
 # alerting uniquement (checks locaux → Ntfy local)
 # ============================================================
 - name: "Opérations Sentinelle (VPS) — L5"
-  hosts: vps
+  hosts: dmz
   become: true
   gather_facts: false
   ignore_unreachable: true

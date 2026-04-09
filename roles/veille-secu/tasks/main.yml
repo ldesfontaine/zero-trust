@@ -32,7 +32,7 @@
     mode: '0600'
   register: veille_secu_env
 
-- name: Lancer le container veille-secu
-  shell: "cd {{ veille_secu_dir }} && docker compose up -d --remove-orphans"
+- name: Reconstruire et lancer le container veille-secu
+  shell: "cd {{ veille_secu_dir }} && docker compose up -d --build --remove-orphans"
   become_user: "{{ vault_pi_ssh_user }}"
   when: veille_secu_git.changed or veille_secu_env.changed

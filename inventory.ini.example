@@ -1,9 +1,25 @@
 # ============================================================================
 # Inventory — Copier vers inventory.ini et remplir les valeurs
+#
+# Groupes par zone réseau, PAS par type de hardware.
+# Si un jour tu ajoutes une 2e machine LAN, crée des sous-groupes
+# fonctionnels pour éviter les doublons de rôles :
+#
+#   [storage]
+#   pi_serv ...
+#
+#   [compute]
+#   minipc_serv ...
+#
+#   [lan:children]
+#   storage
+#   compute
+#
+# Puis dans les playbooks, cible storage ou compute au lieu de lan.
 # ============================================================================
 
-[vps]
+[dmz]
 vps_serv ansible_host=X.X.X.X ansible_user=root ansible_port=22 ansible_python_interpreter=/usr/bin/python3
 
-[pi]
+[lan]
 pi_serv ansible_host=192.168.1.X ansible_user=admin ansible_port=22 ansible_python_interpreter=/usr/bin/python3

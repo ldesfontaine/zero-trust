@@ -11,7 +11,7 @@
 # PLAY 1 — Services VPS / Sentinelle (L4)
 # ============================================================
 - name: "Services Sentinelle (VPS) — L4"
-  hosts: vps
+  hosts: dmz
   become: true
   gather_facts: false
   ignore_unreachable: true
@@ -52,7 +52,7 @@
 # PLAY 2 — Services Pi / Cerveau (L4)
 # ============================================================
 - name: "Services Cerveau (Pi) — L4"
-  hosts: pi
+  hosts: lan
   become: true
   gather_facts: false
   ignore_unreachable: true

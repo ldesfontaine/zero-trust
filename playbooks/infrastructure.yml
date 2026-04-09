@@ -11,7 +11,7 @@
 # PLAY 1 — Infrastructure VPS / Sentinelle (L1-L3)
 # ============================================================
 - name: "Infrastructure Sentinelle (VPS) — L1-L3"
-  hosts: vps
+  hosts: dmz
   become: true
   gather_facts: false
   ignore_unreachable: true
@@ -56,7 +56,7 @@
 # PLAY 2 — Infrastructure Pi / Cerveau (L1-L3)
 # ============================================================
 - name: "Infrastructure Cerveau (Pi) — L1-L3"
-  hosts: pi
+  hosts: lan
   become: true
   gather_facts: false
   ignore_unreachable: true

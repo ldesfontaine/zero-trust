@@ -32,7 +32,7 @@
     mode: '0600'
   register: bientot_env
 
-- name: Lancer le container bientot
-  shell: "cd {{ bientot_dir }} && docker compose up -d --remove-orphans"
+- name: Reconstruire et lancer le container bientot
+  shell: "cd {{ bientot_dir }} && docker compose up -d --build --remove-orphans"
   become_user: "{{ vault_pi_ssh_user }}"
   when: bientot_git.changed or bientot_env.changed
