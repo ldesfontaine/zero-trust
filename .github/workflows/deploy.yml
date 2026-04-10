@@ -103,6 +103,7 @@ jobs:
           CMD="$CMD && cd ~/deployVps && git pull origin main"
           CMD="$CMD && ansible-playbook -i inventory.ini ${INPUT_PLAYBOOK}"
           CMD="$CMD --vault-password-file ~/.vault_pass"
+          CMD="$CMD -e ansible_ssh_private_key_file=~/.ssh/id_ed25519"
 
           # Mode check ou apply
           if [ "${INPUT_MODE}" = "check" ]; then
