@@ -1,9 +1,25 @@
 # ============================================================================
 # Valeurs Terraform — Copier vers terraform.tfvars et remplir
 # NE PAS commiter terraform.tfvars (secrets)
+#
+# Pour un VPS existant : terraform import hostinger_vps.sentinel <VPS_ID>
+# Pour découvrir les IDs : terraform apply -target=data.hostinger_vps_* puis terraform output
 # ============================================================================
 
 hostinger_api_token = "CHANGE_ME"
-vps_plan            = "KVM-1"
-vps_location        = "fr"
-ssh_public_key      = "ssh-ed25519 AAAA... admin@homelab"
+
+# Plan : lister via terraform output available_plans
+# Compte FR → préfixe "hostingerfr-*", pas "hostingercom-*"
+# Si VPS importé : vérifier la valeur exacte avec terraform state show hostinger_vps.sentinel
+# Exemple : "KVM 2" (importé) ou "hostingerfr-vps-kvm2-eur-1m" (créé)
+vps_plan = "KVM 2"
+
+# IDs numériques — lister via terraform output available_data_centers / available_templates
+vps_data_center_id = 15    # Paris (fr)
+vps_template_id    = 1188  # Debian 13 (latest)
+
+# Hostname : doit être un FQDN valide
+# Si VPS importé : laisser le hostname Hostinger par défaut (ex: srv616335.hstgr.cloud)
+vps_hostname = "srv<ID>.hstgr.cloud"
+
+ssh_public_key = "ssh-ed25519 AAAA... user@host"

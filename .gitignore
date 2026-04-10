@@ -12,6 +12,13 @@ CLAUDE.md
 *.retry
 .ansible/
 
+# Terraform
+terraform/.terraform/
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/terraform.tfvars
+*.tfplan
+
 # ============================================================
 # Fichiers sensibles — NE JAMAIS commit sans chiffrement vault
 # Copier les .example correspondants et remplir les valeurs
@@ -20,4 +27,4 @@ CLAUDE.md
 host_vars/pi_serv.yml
 host_vars/vps_serv.yml
 group_vars/all.yml
-inventory.ini
+#inventory.ini

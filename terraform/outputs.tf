@@ -12,3 +12,18 @@ output "vps_id" {
   description = "ID du VPS chez Hostinger"
   value       = hostinger_vps.sentinel.id
 }
+
+output "available_data_centers" {
+  description = "Datacenters disponibles (pour choisir vps_data_center_id)"
+  value       = data.hostinger_vps_data_centers.all.data_centers
+}
+
+output "available_templates" {
+  description = "Templates OS disponibles (pour choisir vps_template_id)"
+  value       = data.hostinger_vps_templates.all.templates
+}
+
+output "available_plans" {
+  description = "Plans disponibles (pour choisir vps_plan)"
+  value       = data.hostinger_vps_plans.all.plans
+}

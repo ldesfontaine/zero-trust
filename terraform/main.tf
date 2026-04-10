@@ -31,11 +31,27 @@ provider "hostinger" {
   api_token = var.hostinger_api_token
 }
 
-# --- VPS Sentinelle (DMZ) ---
-resource "hostinger_vps" "sentinel" {
-  plan     = var.vps_plan
-  location = var.vps_location
-
-  # Clé SSH injectée au provisioning — accès root initial pour bootstrap Ansible
-  ssh_key = var.ssh_public_key
+# --- Clé SSH (créée au niveau du compte, référencée par ID) ---
+# Accès root initial pour le bootstrap Ansible
+resource "hostinger_vps_ssh_key" "deploy" {
+  name = "deploy-key"
+  key  = var.ssh_public_key
 }
+
+# --- VPS Sentinelle (DMZ) ---
+# data_center_id et template_id : obtenir les valeurs disponibles via :
+#   terraform plan -target=data.hostinger_vps_data_centers.all
+#   terraform plan -target=data.hostinger_vps_templates.all
+resource "hostinger_vps" "sentinel" {
+  plan           = var.vps_plan
+  data_center_id = var.vps_data_center_id
+  template_id    = var.vps_template_id
+  hostname       = var.vps_hostname
+
+  ssh_key_ids = [hostinger_vps_ssh_key.deploy.id]
+}
+
+# --- Data sources (utiles pour découvrir les IDs disponibles) ---
+data "hostinger_vps_data_centers" "all" {}
+data "hostinger_vps_templates" "all" {}
+data "hostinger_vps_plans" "all" {}
