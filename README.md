@@ -2,7 +2,7 @@
 
 Infrastructure DevSecOps hybride : un VPS cloud (**Sentinelle**) agit comme DMZ publique, un Raspberry Pi 5 (**Cerveau**) héberge les données, reliés par un tunnel WireGuard chiffré via NetBird mesh. Aucun port domestique ouvert sur Internet.
 
----
+--- 
 
 ## Architecture
 

@@ -20,7 +20,7 @@ UsePAM yes
 AuthenticationMethods publickey
 
 # --- Restriction d'accès ---
-AllowUsers {{ ssh_user }}
+AllowUsers {{ ssh_user }} {{ vault_deploy_user }}
 
 # --- Timeouts ---
 LoginGraceTime 30
