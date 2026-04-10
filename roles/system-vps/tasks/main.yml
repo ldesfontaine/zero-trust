@@ -77,7 +77,7 @@
     name: ufw
     state: stopped
     enabled: false
-  when: ufw_installed.rc == 0
+  when: ufw_installed.rc is defined and ufw_installed.rc == 0
 
 - name: Déployer la configuration nftables
   template:
