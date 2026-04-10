@@ -24,7 +24,7 @@ terraform/terraform.tfvars
 # Copier les .example correspondants et remplir les valeurs
 # Pour chiffrer : ansible-vault encrypt <fichier>
 # ============================================================
-host_vars/pi_serv.yml
-host_vars/vps_serv.yml
-group_vars/all.yml
+#host_vars/pi_serv.yml
+#host_vars/vps_serv.yml
+#group_vars/all.yml
 #inventory.ini
