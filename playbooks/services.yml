@@ -19,6 +19,7 @@
     ansible_user: "{{ vault_ssh_user }}"
     ansible_port: 22
     ansible_ssh_private_key_file: "{{ priv_ssh_key_path }}"
+    ansible_connection: "{{ 'local' if (ci_mode | default(false) | bool) else omit }}"
 
   pre_tasks:
     - name: "Détecter le port SSH actif ({{ vault_ssh_port }} ou 22)"
@@ -30,11 +31,13 @@
       ignore_errors: true
       register: ssh_port_hardened
       become: false
+      when: not (ci_mode | default(false) | bool)
       tags: [always]
 
     - name: "Basculer sur le port SSH durci si disponible"
       set_fact:
         ansible_port: "{{ vault_ssh_port if not ssh_port_hardened.failed else 22 }}"
+      when: not (ci_mode | default(false) | bool)
       tags: [always]
 
     - name: "Re-gather facts avec le bon port"
@@ -60,6 +63,7 @@
     ansible_user: "{{ vault_pi_ssh_user }}"
     ansible_port: 22
     ansible_ssh_private_key_file: "{{ priv_ssh_key_path }}"
+    ansible_host: "{{ vault_pi_netbird_ip if (ci_mode | default(false) | bool) else omit }}"
 
   pre_tasks:
     - name: "Détecter le port SSH actif ({{ vault_pi_ssh_port }} ou 22)"

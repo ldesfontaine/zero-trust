@@ -4,6 +4,10 @@
 #
 # Prérequis : L0 (bootstrap) déjà exécuté — user admin existant.
 # Idempotent : peut être relancé autant de fois que nécessaire.
+#
+# Mode CI (depuis le VPS bastion) : -e ci_mode=true
+#   - VPS : connection local (évite le loopback SSH qui casse au restart sshd)
+#   - Pi  : ansible_host bascule sur vault_pi_netbird_ip (LAN injoignable)
 # ============================================================================
 ---
 
@@ -19,8 +23,11 @@
     ansible_user: "{{ vault_ssh_user }}"
     ansible_port: 22
     ansible_ssh_private_key_file: "{{ priv_ssh_key_path }}"
+    # CI : le VPS est le contrôleur → connection local (pas de SSH loopback)
+    ansible_connection: "{{ 'local' if (ci_mode | default(false) | bool) else omit }}"
 
   pre_tasks:
+    # En mode CI (local), pas besoin de sonder le port SSH
     - name: "Détecter le port SSH actif ({{ vault_ssh_port }} ou 22)"
       wait_for:
         host: "{{ ansible_host }}"
@@ -30,11 +37,13 @@
       ignore_errors: true
       register: ssh_port_hardened
       become: false
+      when: not (ci_mode | default(false) | bool)
       tags: [always]
 
     - name: "Basculer sur le port SSH durci si disponible"
       set_fact:
         ansible_port: "{{ vault_ssh_port if not ssh_port_hardened.failed else 22 }}"
+      when: not (ci_mode | default(false) | bool)
       tags: [always]
 
     - name: "Re-gather facts avec le bon port"
@@ -64,6 +73,8 @@
     ansible_user: "{{ vault_pi_ssh_user }}"
     ansible_port: 22
     ansible_ssh_private_key_file: "{{ priv_ssh_key_path }}"
+    # CI : le VPS atteint le Pi via NetBird (LAN 192.168.x.x injoignable)
+    ansible_host: "{{ vault_pi_netbird_ip if (ci_mode | default(false) | bool) else omit }}"
 
   pre_tasks:
     - name: "Détecter le port SSH actif ({{ vault_pi_ssh_port }} ou 22)"

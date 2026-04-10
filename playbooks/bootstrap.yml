@@ -54,11 +54,11 @@
         state: present
         key: "{{ lookup('file', deploy_ssh_key_path) }}"
 
-    - name: "Bootstrap VPS : Sudoers limité pour deploy (docker + git)"
+    - name: "Bootstrap VPS : Sudoers limité pour deploy (docker + git + ansible CI)"
       copy:
         content: |
           {{ vault_deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/docker, /usr/bin/docker-compose, /usr/bin/git
-          {{ vault_deploy_user }} ALL=(ALL) NOPASSWD: /usr/local/bin/ansible-playbook
+          {{ vault_deploy_user }} ALL=(ALL) NOPASSWD: /usr/local/bin/ansible-playbook, /home/{{ vault_deploy_user }}/.local/bin/ansible-playbook
         dest: "/etc/sudoers.d/{{ vault_deploy_user }}"
         mode: '0440'
         validate: '/usr/sbin/visudo -cf %s'

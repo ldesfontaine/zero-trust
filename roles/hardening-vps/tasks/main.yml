@@ -20,8 +20,11 @@
     ssh_user: "{{ vault_ssh_user }}"
     ssh_port: "{{ vault_ssh_port }}"
 
-# Restart async : connexion Ansible encore sur port 22
-# → SSH redémarre sur vault_ssh_port sans couper Ansible
+# --- Restart SSH : deux chemins selon le mode de connexion ---
+#
+# Mode laptop (SSH distant) : async pour ne pas tuer la connexion Ansible
+# Mode CI (connection: local) : restart direct, Ansible ne passe pas par SSH
+
 - name: Redémarrer SSH (async — connexion encore sur port 22)
   systemd:
     name: sshd
@@ -29,11 +32,17 @@
   async: 1
   poll: 0
   ignore_errors: true
+  when: ansible_connection | default('ssh') != 'local'
 
-# Attend depuis localhost que le nouveau port réponde
+- name: Redémarrer SSH (mode local — pas de risque de coupure)
+  systemd:
+    name: sshd
+    state: restarted
+  when: ansible_connection | default('ssh') == 'local'
+
 - name: Attendre que SSH soit disponible sur le nouveau port
   wait_for:
-    host: "{{ ansible_host }}"
+    host: "{{ '127.0.0.1' if ansible_connection | default('ssh') == 'local' else ansible_host }}"
     port: "{{ vault_ssh_port }}"
     delay: 3
     timeout: 30
@@ -44,6 +53,7 @@
 - name: Mise à jour du port SSH pour la session Ansible en cours
   set_fact:
     ansible_port: "{{ vault_ssh_port }}"
+  when: ansible_connection | default('ssh') != 'local'
 
 # Supprimer la règle port 22 dans nftables (bootstrap terminé)
 - name: Supprimer la règle SSH port 22 dans nftables (bootstrap terminé)

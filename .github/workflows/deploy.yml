@@ -101,9 +101,14 @@ jobs:
           CMD="echo '${VAULT_PASSWORD}' > ~/.vault_pass && chmod 600 ~/.vault_pass"
           CMD="$CMD && export PATH=\$HOME/.local/bin:\$PATH"
           CMD="$CMD && cd ~/deployVps && git pull origin main"
-          CMD="$CMD && ansible-playbook -i inventory.ini ${INPUT_PLAYBOOK}"
-          CMD="$CMD --vault-password-file ~/.vault_pass"
-          CMD="$CMD -e ansible_ssh_private_key_file=~/.ssh/id_ed25519"
+          # sudo : les plays VPS utilisent connection=local en CI,
+          # Ansible doit tourner en root pour que become: true fonctionne
+          CMD="$CMD && sudo \$HOME/.local/bin/ansible-playbook -i inventory.ini ${INPUT_PLAYBOOK}"
+          # Paths absolus : sudo fait tourner ansible en root,
+          # ~ se résoudrait en /root/ au lieu de /home/deploy/
+          CMD="$CMD --vault-password-file \$HOME/.vault_pass"
+          CMD="$CMD -e ansible_ssh_private_key_file=\$HOME/.ssh/id_ed25519"
+          CMD="$CMD -e ci_mode=true"
 
           # Mode check ou apply
           if [ "${INPUT_MODE}" = "check" ]; then
