@@ -49,6 +49,8 @@
   roles:
     - role: backup-zfs
       tags: [layer5, backup-zfs]
+    - role: image-maintenance
+      tags: [layer5, image-maintenance]
     - role: alerting
       tags: [layer5, alerting]
 
@@ -89,5 +91,7 @@
       tags: [always]
 
   roles:
+    - role: image-maintenance
+      tags: [layer5, image-maintenance]
     - role: alerting
       tags: [layer5, alerting]

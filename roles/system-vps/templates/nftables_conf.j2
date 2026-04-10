@@ -1,0 +1,54 @@
+#!/usr/sbin/nft -f
+# Managed by Ansible — ne pas modifier manuellement
+#
+# Firewall nftables VPS (Sentinelle)
+# CrowdSec bouncer ajoute ses propres chaînes automatiquement — ne pas interférer
+
+flush ruleset
+
+table inet filter {
+
+  chain input {
+    type filter hook input priority 0; policy drop;
+
+    # Loopback
+    iif "lo" accept
+
+    # Connexions établies
+    ct state established,related accept
+
+    # ICMP (ping)
+    ip protocol icmp accept
+    ip6 nexthdr ipv6-icmp accept
+
+    # SSH bootstrap (port 22) — sera supprimé par hardening-vps après bascule
+    tcp dport 22 accept
+
+    # SSH durci
+    tcp dport {{ vault_ssh_port }} accept
+
+    # HTTP/HTTPS (Traefik + Let's Encrypt)
+    tcp dport { 80, 443 } accept
+
+    # NetBird gRPC backward compat
+    tcp dport 33073 accept
+
+    # NetBird STUN (UDP)
+    udp dport 3478 accept
+
+    # Mesh NetBird — node-exporter + CrowdSec prometheus (Pi → VPS)
+    ip saddr 100.64.0.0/10 tcp dport { 9100, 6060 } accept
+
+    # Log et drop le reste
+    counter drop
+  }
+
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+    # Docker gère ses propres chaînes forward
+  }
+
+  chain output {
+    type filter hook output priority 0; policy accept;
+  }
+}

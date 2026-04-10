@@ -28,7 +28,6 @@
   apt:
     name:
       - curl
-      - ufw
       - python3-pip
       - git
       - nftables
@@ -62,52 +61,29 @@
     dest: /etc/apt/apt.conf.d/50unattended-upgrades
     mode: '0644'
  
-# --- Firewall UFW VPS ---
-- name: UFW - Autoriser SSH bootstrap (port 22)
-  ufw:
-    rule: allow
-    port: "22"
-    proto: tcp
- 
-- name: UFW - Autoriser HTTP (Traefik + Let's Encrypt challenge)
-  ufw:
-    rule: allow
-    port: "80"
-    proto: tcp
- 
-- name: UFW - Autoriser HTTPS (Traefik)
-  ufw:
-    rule: allow
-    port: "443"
-    proto: tcp
- 
-- name: UFW - Autoriser NetBird gRPC backward compat (33073)
-  ufw:
-    rule: allow
-    port: "33073"
-    proto: tcp
- 
-- name: UFW - Autoriser NetBird STUN (3478 UDP)
-  ufw:
-    rule: allow
-    port: "3478"
-    proto: udp
+# --- Firewall nftables VPS ---
+# nftables natif (PAS UFW) pour éviter les conflits avec CrowdSec bouncer
+# CrowdSec bouncer injecte ses propres chaînes dans nftables
 
-- name: UFW - Autoriser node-exporter depuis le mesh NetBird (Pi → VPS)
-  ufw:
-    rule: allow
-    port: "9100"
-    proto: tcp
-    src: "100.64.0.0/10"
+- name: Désactiver UFW si présent (conflit avec nftables)
+  systemd:
+    name: ufw
+    state: stopped
+    enabled: false
+  ignore_errors: true
 
-- name: UFW - Autoriser CrowdSec prometheus depuis le mesh NetBird (Pi → VPS)
-  ufw:
-    rule: allow
-    port: "6060"
-    proto: tcp
-    src: "100.64.0.0/10"
+- name: Déployer la configuration nftables
+  template:
+    src: nftables_conf.j2
+    dest: /etc/nftables.conf
+    owner: root
+    group: root
+    mode: '0600'
+    validate: '/usr/sbin/nft -c -f %s'
+  notify: Reload nftables
 
-- name: UFW - Activer le pare-feu
-  ufw:
-    state: enabled
-    policy: deny
+- name: Activer et démarrer nftables
+  systemd:
+    name: nftables
+    state: started
+    enabled: true

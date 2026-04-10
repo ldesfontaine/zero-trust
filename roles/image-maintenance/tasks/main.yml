@@ -1,0 +1,46 @@
+# ============================================================================
+# Image Maintenance — Pull hebdo, prune, scan Trivy, alerte Ntfy
+#
+# Évite le scénario "6 mois sans rebuild → images obsolètes → impossible
+# de redéployer". Chaque semaine :
+#   1. docker compose pull (met à jour les images)
+#   2. docker compose up -d (redémarre si image changée)
+#   3. docker image prune (nettoie les anciennes)
+#   4. Trivy scan des images critiques (CVE high/critical → Ntfy)
+# ============================================================================
+---
+- name: Installer Trivy (scanner de vulnérabilités)
+  shell: |
+    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+  args:
+    creates: /usr/local/bin/trivy
+
+- name: Déployer le script de maintenance des images Docker
+  template:
+    src: docker_image_maintenance_sh.j2
+    dest: /opt/docker-image-maintenance.sh
+    owner: root
+    group: root
+    mode: '0750'
+
+- name: Cron hebdomadaire — maintenance des images Docker (dimanche 4h)
+  cron:
+    name: "docker-image-maintenance"
+    minute: "0"
+    hour: "4"
+    weekday: "0"
+    job: "/opt/docker-image-maintenance.sh >> /var/log/docker-image-maintenance.log 2>&1"
+    user: root
+
+- name: Logrotate pour le log de maintenance
+  copy:
+    content: |
+      /var/log/docker-image-maintenance.log {
+        weekly
+        rotate 4
+        compress
+        missingok
+        notifempty
+      }
+    dest: /etc/logrotate.d/docker-image-maintenance
+    mode: '0644'

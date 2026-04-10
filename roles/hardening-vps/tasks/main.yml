@@ -1,19 +1,13 @@
 # ============================================================================
 # Hardening SSH — VPS
 #
-# Run 1 : SSH tourne sur 22 → déploie sshd_config (port 2222) →
-#         restart async (connexion encore sur 22) → wait_for port 2222 →
-#         set_fact 2222 → ferme port 22
+# Run 1 : SSH tourne sur 22 → déploie sshd_config (port durci) →
+#         restart async (connexion encore sur 22) → wait_for port durci →
+#         set_fact durci → supprime la règle port 22 dans nftables
 #
-# Run 2+: SSH tourne déjà sur 2222 → même mécanique, idempotent
+# Run 2+: SSH tourne déjà sur le port durci → même mécanique, idempotent
 # ============================================================================
 ---
-- name: Autoriser le port SSH final dans UFW
-  ufw:
-    rule: allow
-    port: "{{ vault_ssh_port | string }}"
-    proto: tcp
- 
 - name: Déploiement de la configuration SSH durcie
   template:
     src: sshd_config.j2
@@ -25,7 +19,7 @@
   vars:
     ssh_user: "{{ vault_ssh_user }}"
     ssh_port: "{{ vault_ssh_port }}"
- 
+
 # Restart async : connexion Ansible encore sur port 22
 # → SSH redémarre sur vault_ssh_port sans couper Ansible
 - name: Redémarrer SSH (async — connexion encore sur port 22)
@@ -35,7 +29,7 @@
   async: 1
   poll: 0
   ignore_errors: true
- 
+
 # Attend depuis localhost que le nouveau port réponde
 - name: Attendre que SSH soit disponible sur le nouveau port
   wait_for:
@@ -45,16 +39,17 @@
     timeout: 30
   delegate_to: localhost
   become: false
-  
+
 # Maintenant que le port est confirmé, Ansible bascule dessus
 - name: Mise à jour du port SSH pour la session Ansible en cours
   set_fact:
     ansible_port: "{{ vault_ssh_port }}"
- 
-- name: Supprimer la règle UFW autorisant le port 22 (bootstrap)
-  ufw:
-    rule: allow
-    port: "22"
-    proto: tcp
-    delete: yes
+
+# Supprimer la règle port 22 dans nftables (bootstrap terminé)
+- name: Supprimer la règle SSH port 22 dans nftables (bootstrap terminé)
+  replace:
+    path: /etc/nftables.conf
+    regexp: '^\s*# SSH bootstrap.*\n\s*tcp dport 22 accept\n'
+    replace: ''
   when: vault_ssh_port | int != 22
+  notify: Reload nftables

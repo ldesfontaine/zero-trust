@@ -1,0 +1,6 @@
+---
+dependencies:
+  - role: docker
+
+galaxy_info:
+  description: "Maintenance automatique des images Docker (pull, prune, scan Trivy)"

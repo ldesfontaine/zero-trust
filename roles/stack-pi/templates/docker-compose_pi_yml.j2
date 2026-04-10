@@ -119,6 +119,7 @@ services:
       - DB_PASSWORD={{ vault_immich_db_password }}
       - DB_DATABASE_NAME={{ vault_immich_db_name }}
       - REDIS_HOSTNAME=immich-redis
+      - IMMICH_MACHINE_LEARNING_ENABLED=false
     volumes:
       - {{ pi_stack_dir }}/immich/upload:/usr/src/app/upload
       - /etc/localtime:/etc/localtime:ro
@@ -132,21 +133,8 @@ services:
       timeout: 10s
       retries: 3
 
-  immich-machine-learning:
-    image: ghcr.io/immich-app/immich-machine-learning:{{ immich_version }}
-    container_name: immich-machine-learning
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    volumes:
-      - {{ pi_stack_dir }}/immich/model-cache:/cache
-    networks:
-      - brain_private
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3003/ping')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+  # immich-machine-learning désactivé — stockage à froid uniquement, pas besoin d'IA
+  # Pour réactiver : décommenter ce bloc et redéployer avec --tags stack-pi
 
   immich-redis:
     image: redis:{{ immich_redis_version }}
