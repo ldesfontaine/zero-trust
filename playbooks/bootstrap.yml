@@ -21,14 +21,14 @@
     ansible_port: 22
 
   tasks:
-    - name: "Bootstrap VPS : Création de l'utilisateur lucas"
+    - name: "Bootstrap VPS : Création de l'utilisateur admin"
       user:
         name: "{{ vault_ssh_user }}"
         shell: /bin/bash
         groups: sudo
         append: yes
 
-    - name: "Bootstrap VPS : Sudo sans mot de passe pour lucas"
+    - name: "Bootstrap VPS : Sudo sans mot de passe pour l'admin"
       copy:
         content: "{{ vault_ssh_user }} ALL=(ALL) NOPASSWD:ALL\n"
         dest: "/etc/sudoers.d/{{ vault_ssh_user }}"

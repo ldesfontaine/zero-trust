@@ -97,7 +97,10 @@
       tags: [layer3, netbird-client]
     - role: netbird-dns
       tags: [layer3, netbird-dns]
+      when: inventory_hostname in groups.get('dns_servers', [])
     - role: adguard-dns
       tags: [layer3, adguard-dns]
+      when: inventory_hostname in groups.get('dns_servers', [])
     - role: netbird-acl
       tags: [layer3, netbird-acl]
+      when: inventory_hostname in groups.get('dns_servers', [])
