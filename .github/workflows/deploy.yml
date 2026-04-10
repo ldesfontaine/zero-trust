@@ -95,9 +95,12 @@ jobs:
           INPUT_MODE: ${{ inputs.mode }}
           INPUT_TAGS: ${{ inputs.tags }}
           INPUT_LIMIT: ${{ inputs.limit }}
+          VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
         run: |
-          # Construire la commande ansible-playbook
-          CMD="cd ~/deployVps && git pull origin main"
+          # Créer le vault password à la volée sur le VPS, déployer, nettoyer
+          CMD="echo '${VAULT_PASSWORD}' > ~/.vault_pass && chmod 600 ~/.vault_pass"
+          CMD="$CMD && export PATH=\$HOME/.local/bin:\$PATH"
+          CMD="$CMD && cd ~/deployVps && git pull origin main"
           CMD="$CMD && ansible-playbook -i inventory.ini ${INPUT_PLAYBOOK}"
           CMD="$CMD --vault-password-file ~/.vault_pass"
 
@@ -115,6 +118,9 @@ jobs:
           if [ -n "${INPUT_LIMIT}" ]; then
             CMD="$CMD --limit '${INPUT_LIMIT}'"
           fi
+
+          # Toujours supprimer le vault password après exécution
+          CMD="$CMD ; rm -f ~/.vault_pass"
 
           echo "Commande: $CMD"
           ssh vps-bastion "$CMD"

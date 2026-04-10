@@ -2,9 +2,14 @@
 # Managed by Ansible — ne pas modifier manuellement
 #
 # Firewall nftables VPS (Sentinelle)
-# CrowdSec bouncer ajoute ses propres chaînes automatiquement — ne pas interférer
+# Ne PAS utiliser "flush ruleset" — ça détruit les tables NetBird/CrowdSec
+# et coupe SSH pendant le reload.
 
-flush ruleset
+# Flush ciblé : uniquement NOS tables (pas celles de NetBird/CrowdSec)
+table inet filter
+delete table inet filter
+table ip nat
+delete table ip nat
 
 table inet filter {
 
@@ -45,10 +50,27 @@ table inet filter {
 
   chain forward {
     type filter hook forward priority 0; policy drop;
-    # Docker gère ses propres chaînes forward
+
+    # Retour trafic établi
+    ct state established,related accept
+
+    # Docker : containers → internet (outbound uniquement)
+    # Nécessaire : Traefik (Let's Encrypt), CrowdSec (hub), DNS
+    # Ports publiés = docker-proxy (input chain), pas forward
+    iifname "docker0" oifname != "docker0" accept
+    iifname "br-*" oifname != "br-*" accept
   }
 
   chain output {
     type filter hook output priority 0; policy accept;
+  }
+}
+
+# NAT pour Docker (masquerade containers → internet)
+table ip nat {
+  chain postrouting {
+    type nat hook postrouting priority 100; policy accept;
+    # Docker subnets (172.16.0.0/12) sortant vers l'extérieur
+    ip saddr 172.16.0.0/12 oifname != "docker0" masquerade
   }
 }

@@ -65,12 +65,18 @@
 # nftables natif (PAS UFW) pour éviter les conflits avec CrowdSec bouncer
 # CrowdSec bouncer injecte ses propres chaînes dans nftables
 
+- name: Vérifier si UFW est installé
+  shell: dpkg-query -W -f='${Status}' ufw 2>/dev/null | grep -q "install ok installed"
+  register: ufw_installed
+  changed_when: false
+  failed_when: false
+
 - name: Désactiver UFW si présent (conflit avec nftables)
   systemd:
     name: ufw
     state: stopped
     enabled: false
-  ignore_errors: true
+  when: ufw_installed.rc == 0
 
 - name: Déployer la configuration nftables
   template:

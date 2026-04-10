@@ -45,8 +45,7 @@
       user:
         name: "{{ vault_deploy_user }}"
         shell: /bin/bash
-        groups: docker
-        append: yes
+        # Groupe docker ajouté en L2 par le rôle docker (Docker pas encore installé ici)
         create_home: yes
 
     - name: "Bootstrap VPS : Injection de la clé SSH deploy"
@@ -63,6 +62,29 @@
         dest: "/etc/sudoers.d/{{ vault_deploy_user }}"
         mode: '0440'
         validate: '/usr/sbin/visudo -cf %s'
+
+    - name: "Bootstrap VPS : Installer pip pour le user deploy"
+      apt:
+        name: python3-pip
+        state: present
+
+    - name: "Bootstrap VPS : Installer Ansible pour le user deploy"
+      pip:
+        name: ansible
+      become_user: "{{ vault_deploy_user }}"
+
+    - name: "Bootstrap VPS : Cloner le repo Ansible"
+      git:
+        repo: "{{ deploy_repo_url }}"
+        dest: "{{ deploy_repo_path }}"
+        version: main
+      become_user: "{{ vault_deploy_user }}"
+
+    - name: "Bootstrap VPS : Installer les collections Ansible"
+      command: ansible-galaxy collection install -r {{ deploy_repo_path }}/requirements.yml
+      become_user: "{{ vault_deploy_user }}"
+      args:
+        creates: "/home/{{ vault_deploy_user }}/.ansible/collections"
 
 
 # ============================================================

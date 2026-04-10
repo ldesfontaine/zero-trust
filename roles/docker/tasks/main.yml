@@ -45,17 +45,35 @@
       - docker-compose-plugin
     state: latest
  
+- name: Désactiver iptables dans Docker (VPS nftables uniquement)
+  copy:
+    content: |
+      {
+        "iptables": false
+      }
+    dest: /etc/docker/daemon.json
+    mode: '0644'
+  when: inventory_hostname in groups.get('dmz', [])
+  notify: Redémarrer Docker
+
 - name: Démarrer et activer Docker
   systemd:
     name: docker
     state: started
     enabled: yes
  
-- name: Ajouter l'utilisateur au groupe docker
+- name: Ajouter l'utilisateur admin au groupe docker
   user:
     name: "{{ ansible_user }}"
     groups: docker
     append: yes
+
+- name: Ajouter l'utilisateur deploy au groupe docker
+  user:
+    name: "{{ vault_deploy_user }}"
+    groups: docker
+    append: yes
+  when: vault_deploy_user is defined
 
 - name: Réinitialiser la connexion SSH pour appliquer le nouveau groupe docker
   meta: reset_connection
