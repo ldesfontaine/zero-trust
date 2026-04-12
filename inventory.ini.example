@@ -23,3 +23,7 @@ vps_serv ansible_host=X.X.X.X ansible_user=root ansible_port=22 ansible_python_i
 
 [lan]
 pi_serv ansible_host=192.168.1.X ansible_user=admin ansible_port=22 ansible_python_interpreter=/usr/bin/python3
+
+# Machines hébergeant AdGuard DNS + ACLs NetBird
+[dns_servers]
+pi_serv

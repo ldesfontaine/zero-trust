@@ -3,3 +3,6 @@
   systemd:
     name: crowdsec-firewall-bouncer
     state: restarted
+  when:
+    - crowdsec_lapi_ok | default(false)
+    - not ansible_check_mode or (_bouncer_present is defined and _bouncer_present.rc == 0)

@@ -3,3 +3,10 @@
   systemd:
     name: nftables
     state: reloaded
+  notify: Restart CrowdSec bouncer after nftables reload
+
+- name: Restart CrowdSec bouncer after nftables reload
+  shell: >
+    test -f /usr/bin/crowdsec-firewall-bouncer &&
+    systemctl restart crowdsec-firewall-bouncer || true
+  changed_when: false

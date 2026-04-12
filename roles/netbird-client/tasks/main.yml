@@ -1,41 +1,115 @@
 # ============================================================================
-# NetBird Client — Installation sur l'hôte (VPS + Pi)
+# NetBird Client — Installation sur l'hote (VPS + Pi) (L3c)
 #
-# Le client tourne sur l'hôte pour avoir accès direct aux interfaces
-# réseau kernel (WireGuard).
+# Le client tourne sur l'hote pour avoir acces direct aux interfaces
+# reseau kernel (WireGuard).
 #
-# Après déploiement, enrollment manuel :
-#   sudo netbird up --setup-key <TON_SETUP_KEY> \
-#     --management-url http://<VPS_IP>:33073
-#   netbird status  → noter l'IP WireGuard attribuée
+# Prerequis (VPS) : les roles traefik (L3a) et netbird-server (L3b) ont
+# deploye le serveur NetBird. Le dashboard est accessible pour creer les
+# setup keys.
+#
+# Apres deploiement, enrollment manuel :
+#   sudo netbird up --setup-key <SETUP_KEY> \
+#     --management-url https://mesh.ldesfontaine.com
+#   netbird status → noter l'IP WireGuard attribuee
 # ============================================================================
 ---
- 
-- name: Installer NetBird (script officiel — gère arm64 + amd64)
+
+- name: Creer le dossier de logs NetBird
+  file:
+    path: /var/log/netbird
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Installer NetBird (script officiel — gere arm64 + amd64)
   shell: "curl -fsSL https://pkgs.netbird.io/install.sh | sh"
   args:
     creates: /usr/bin/netbird
- 
-- name: Mettre à jour le cache apt après ajout du repo NetBird
+
+# En check mode, le script ci-dessus ne s'exécute pas réellement (creates skip)
+# → apt update inutile et netbird introuvable. Skip si binaire absent.
+- name: Verifier si le binaire NetBird est present
+  command: which netbird
+  register: _netbird_present
+  failed_when: false
+  changed_when: false
+  check_mode: false
+
+- name: Mettre a jour le cache apt apres ajout du repo NetBird
   apt:
     update_cache: yes
- 
+  when: not ansible_check_mode or _netbird_present.rc == 0
+
 - name: Installer le package NetBird
   apt:
     name: netbird
     state: latest
- 
-- name: Activer et démarrer NetBird daemon
+  when: not ansible_check_mode or _netbird_present.rc == 0
+
+- name: Activer et demarrer NetBird daemon
   systemd:
     name: netbird
     state: started
     enabled: yes
- 
-- name: "INFO — Enrollment NetBird"
+  when: not ansible_check_mode or _netbird_present.rc == 0
+
+- name: Verifier le statut d'enrollment NetBird
+  shell: "netbird status | grep -q 'Connected'"
+  register: netbird_enrolled
+  changed_when: false
+  failed_when: false
+
+# -- Protection DNS : NetBird peut hijacker resolv.conf avec un nameserver
+#    mesh injoignable (ACLs pas encore configurees). Si le DNS mesh ne
+#    repond pas, on restaure le resolv.conf original pour ne pas casser
+#    la resolution DNS de la machine.
+- name: Verifier si NetBird a modifie resolv.conf
+  stat:
+    path: /etc/resolv.conf.original.netbird
+  register: _nb_resolv_backup
+
+- name: Tester le DNS mesh NetBird
+  shell: "timeout 3 nslookup google.com $(grep nameserver /etc/resolv.conf | head -1 | awk '{print $2}') >/dev/null 2>&1"
+  register: _nb_dns_test
+  changed_when: false
+  failed_when: false
+  when: _nb_resolv_backup.stat.exists
+
+- name: Restaurer resolv.conf original (DNS mesh injoignable)
+  copy:
+    src: /etc/resolv.conf.original.netbird
+    dest: /etc/resolv.conf
+    remote_src: true
+  when:
+    - _nb_resolv_backup.stat.exists
+    - _nb_dns_test.rc | default(0) != 0
+
+- name: "INFO — DNS mesh restaure"
   debug:
     msg: >
-      NetBird installé et démarré.
-      Pour enrôler cette machine dans le réseau VPN, exécuter manuellement :
-        sudo netbird up --setup-key <TON_SETUP_KEY>
-          --management-url http://{{ vault_vps_mgmt_ip }}:33073
-      Puis : netbird status → noter l'IP WireGuard attribuée
+      NetBird a remplace /etc/resolv.conf avec un nameserver mesh
+      injoignable (ACLs pas encore configurees). Le resolv.conf original
+      a ete restaure. Le DNS mesh sera reconfigure automatiquement quand
+      les ACLs et AdGuard seront en place.
+  when:
+    - _nb_resolv_backup.stat.exists
+    - _nb_dns_test.rc | default(0) != 0
+
+- name: "INFO — Enrollment NetBird requis"
+  debug:
+    msg: >
+      NetBird installe et demarre mais PAS ENCORE ENROLE.
+
+      1. Creer une setup key sur https://{{ netbird_fqdn }}
+         (dashboard NetBird, deploye par le role netbird-server)
+
+      2. Enroler cette machine :
+           sudo netbird up --setup-key <SETUP_KEY> --management-url https://{{ netbird_fqdn }}
+
+      3. Noter l'IP WireGuard attribuee :
+           netbird status
+
+      4. Mettre a jour host_netbird_ip dans host_vars/{{ inventory_hostname }}.yml
+  when: netbird_enrolled.rc != 0

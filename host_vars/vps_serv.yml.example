@@ -4,12 +4,14 @@
 # ============================================================================
 
 # --- Connexion finale (Play 2) ---
-vault_ssh_user: "lucas"
-vault_ssh_port: 2222
 vault_ssh_password: "CHANGE_ME"    # Mot de passe root OVH (Run 1 uniquement)
 
+# --- NetBird (source de verite per-host) ---
+host_netbird_ip: "CHANGE_ME"    # Renseigner apres enrollment NetBird (IP WireGuard VPS)
+
 # --- Chemins ---
-stack_dir: "/opt/stack"
+backbone_dir: "/opt/backbone"       # Stack L3 (Traefik + NetBird server)
+stack_dir: "/opt/sentinel"           # Stack L4 (CrowdSec, Ntfy, node-exporter)
 
 # --- CrowdSec ---
 vault_crowdsec_lapi_key: "CHANGE_ME"           # openssl rand -hex 16

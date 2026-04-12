@@ -1,0 +1,81 @@
+# ============================================================================
+# NetBird Resolve — Calculer l'IP de binding par host
+#
+# Chaque host declare host_netbird_ip dans ses host_vars.
+# Ce role verifie si l'IP est reellement presente sur une interface reseau
+# et produit 2 facts consommes par tous les templates :
+#
+#   netbird_bind_ip   — IP NetBird si interface UP, sinon 127.0.0.1
+#   netbird_mesh_ready — true si le mesh est operationnel
+#
+# Prerequis : gather_facts (setup) deja execute.
+# Note : utilise `ip addr` au lieu de ansible_all_ipv4_addresses
+# car ce dernier peut omettre les interfaces WireGuard (wt0).
+# ============================================================================
+---
+
+- name: "NetBird Resolve : Verifier que host_netbird_ip est defini"
+  assert:
+    that:
+      - host_netbird_ip is defined
+    fail_msg: >
+      host_netbird_ip absent des host_vars de {{ inventory_hostname }}.
+      Ajouter host_netbird_ip dans host_vars/{{ inventory_hostname }}.yml
+  tags: [always]
+
+- name: "NetBird Resolve : Determiner si l'IP NetBird est un placeholder"
+  set_fact:
+    _nb_ip_configured: "{{ host_netbird_ip not in ['CHANGE_ME', 'REMPLACER_APRES_ENROLEMENT_NETBIRD'] }}"
+  tags: [always]
+
+# ansible_all_ipv4_addresses peut omettre les interfaces WireGuard (wt0)
+# sur certaines machines (ex. arm64 Debian trixie). ip addr est fiable.
+# Retries : si le serveur NetBird a ete recharge dans le play precedent,
+# le client met quelques secondes a retablir le tunnel WireGuard.
+- name: "NetBird Resolve : Verifier la presence de l'IP sur une interface"
+  shell: "ip addr show | grep -q 'inet {{ host_netbird_ip }}/'"
+  register: _nb_ip_check
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  retries: 4
+  delay: 5
+  until: _nb_ip_check.rc == 0
+  when: _nb_ip_configured | bool
+  tags: [always]
+
+# Evite les expressions Jinja2 booleennes dans set_fact (problemes de
+# conversion string/bool avec | bool). On utilise des when purs + valeurs
+# litterales.
+- name: "NetBird Resolve : Binding mesh (IP presente sur interface)"
+  set_fact:
+    _nb_ip_on_interface: true
+    netbird_mesh_ready: true
+    netbird_bind_ip: "{{ host_netbird_ip }}"
+  when:
+    - _nb_ip_configured | bool
+    - _nb_ip_check.rc is defined
+    - _nb_ip_check.rc == 0
+  tags: [always]
+
+- name: "NetBird Resolve : Fallback (mesh indisponible ou IP non configuree)"
+  set_fact:
+    _nb_ip_on_interface: false
+    netbird_mesh_ready: false
+    netbird_bind_ip: "127.0.0.1"
+  when: >-
+    not (_nb_ip_configured | bool)
+    or _nb_ip_check.rc is not defined
+    or _nb_ip_check.rc != 0
+  tags: [always]
+
+- name: "NetBird Resolve : INFO — Mesh non operationnel"
+  debug:
+    msg: >
+      NetBird mesh non pret sur {{ inventory_hostname }}.
+      host_netbird_ip={{ host_netbird_ip }} | configure={{ _nb_ip_configured }} |
+      sur_interface={{ _nb_ip_on_interface }}.
+      Binding sur 127.0.0.1 — les services ne seront pas joignables via mesh.
+      Relancer apres enrollment NetBird.
+  when: not (netbird_mesh_ready | bool)
+  tags: [always]

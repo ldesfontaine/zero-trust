@@ -6,11 +6,13 @@
 # Run 2+: SSH tourne déjà sur 2223 → idempotent
 # ============================================================================
 ---
+# UFW skip en check mode : binaire pas encore installé (installé par system-pi)
 - name: Autoriser le port SSH final dans UFW
   ufw:
     rule: allow
     port: "{{ vault_pi_ssh_port | string }}"
     proto: tcp
+  when: not ansible_check_mode
 
 - name: Déploiement de la configuration SSH durcie
   template:
@@ -52,6 +54,7 @@
 - name: Activer UFW
   ufw:
     state: enabled
+  when: not ansible_check_mode
 
 # Port 22 fermé après activation UFW — SSH est déjà sur le port durci
 - name: Supprimer la règle UFW autorisant le port 22 (bootstrap)
@@ -60,4 +63,4 @@
     port: "22"
     proto: tcp
     delete: yes
-  when: vault_pi_ssh_port | int != 22
+  when: vault_pi_ssh_port | int != 22 and not ansible_check_mode

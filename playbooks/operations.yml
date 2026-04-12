@@ -1,15 +1,15 @@
 # ============================================================================
-# Opérations (L5) — Backup ZFS + Alerting Ntfy
+# Operations (L5) — Backup ZFS + Alerting Ntfy
 # Usage : ansible-playbook -i inventory.ini playbooks/operations.yml
 #
-# Prérequis : L0-L4 déjà exécutés.
-# Idempotent : peut être relancé autant de fois que nécessaire.
+# Prerequis : L0-L4 deja executes.
+# Idempotent : peut etre relance autant de fois que necessaire.
 # ============================================================================
 ---
 
 # ============================================================
-# PLAY 1 — Opérations Pi / Cerveau (L5)
-# backup-zfs tourne sur le Pi (données ZFS + envoi chiffré vers VPS)
+# PLAY 1 — Operations Pi / Cerveau (L5)
+# backup-zfs tourne sur le Pi (donnees ZFS + envoi chiffre vers VPS)
 # alerting tourne sur le Pi (checks locaux → Ntfy sur le VPS)
 # ============================================================
 - name: "Opérations Cerveau (Pi) — L5"
@@ -18,33 +18,27 @@
   gather_facts: false
   ignore_unreachable: true
   vars:
-    ansible_user: "{{ vault_pi_ssh_user }}"
-    ansible_port: 22
-    ansible_ssh_private_key_file: "{{ priv_ssh_key_path }}"
-    ansible_host: "{{ vault_pi_netbird_ip if (ci_mode | default(false) | bool) else omit }}"
     alerting_check_zfs: true
     alerting_check_backup_vps: true
     alerting_check_backup_usb: true
 
   pre_tasks:
-    - name: "Détecter le port SSH actif ({{ vault_pi_ssh_port }} ou 22)"
-      wait_for:
-        host: "{{ ansible_host }}"
-        port: "{{ vault_pi_ssh_port }}"
-        timeout: 5
-      delegate_to: localhost
-      ignore_errors: true
-      register: ssh_port_hardened
-      become: false
+    - name: "Vérifier les variables critiques (Pi)"
+      assert:
+        that:
+          - vault_pi_ssh_user is defined
+          - vault_pi_ssh_port is defined
+        fail_msg: "Variables Pi manquantes — vérifier group_vars/all.yml et host_vars/pi_serv.yml"
       tags: [always]
 
-    - name: "Basculer sur le port SSH durci si disponible"
-      set_fact:
-        ansible_port: "{{ vault_pi_ssh_port if not ssh_port_hardened.failed else 22 }}"
+    - name: "Resoudre la connexion Pi"
+      include_role:
+        name: connection-resolver
       tags: [always]
 
-    - name: "Re-gather facts avec le bon port"
-      setup:
+    - name: "Resoudre l'IP de binding NetBird (Pi)"
+      include_role:
+        name: netbird-resolve
       tags: [always]
 
   roles:
@@ -57,7 +51,7 @@
 
 
 # ============================================================
-# PLAY 2 — Opérations VPS / Sentinelle (L5)
+# PLAY 2 — Operations VPS / Sentinelle (L5)
 # alerting uniquement (checks locaux → Ntfy local)
 # ============================================================
 - name: "Opérations Sentinelle (VPS) — L5"
@@ -65,33 +59,24 @@
   become: true
   gather_facts: false
   ignore_unreachable: true
-  vars:
-    ansible_user: "{{ vault_ssh_user }}"
-    ansible_port: 22
-    ansible_ssh_private_key_file: "{{ priv_ssh_key_path }}"
-    ansible_connection: "{{ 'local' if (ci_mode | default(false) | bool) else omit }}"
 
   pre_tasks:
-    - name: "Détecter le port SSH actif ({{ vault_ssh_port }} ou 22)"
-      wait_for:
-        host: "{{ ansible_host }}"
-        port: "{{ vault_ssh_port }}"
-        timeout: 5
-      delegate_to: localhost
-      ignore_errors: true
-      register: ssh_port_hardened
-      become: false
-      when: not (ci_mode | default(false) | bool)
+    - name: "Vérifier les variables critiques (VPS)"
+      assert:
+        that:
+          - vault_ssh_user is defined
+          - vault_ssh_port is defined
+        fail_msg: "Variables VPS manquantes — vérifier group_vars/all.yml et host_vars/vps_serv.yml"
       tags: [always]
 
-    - name: "Basculer sur le port SSH durci si disponible"
-      set_fact:
-        ansible_port: "{{ vault_ssh_port if not ssh_port_hardened.failed else 22 }}"
-      when: not (ci_mode | default(false) | bool)
+    - name: "Resoudre la connexion VPS"
+      include_role:
+        name: connection-resolver
       tags: [always]
 
-    - name: "Re-gather facts avec le bon port"
-      setup:
+    - name: "Resoudre l'IP de binding NetBird (VPS)"
+      include_role:
+        name: netbird-resolve
       tags: [always]
 
   roles:

@@ -21,12 +21,24 @@
     ansible_port: 22
 
   tasks:
+    - name: "Bootstrap VPS : Vérifier les variables"
+      assert:
+        that:
+          - vault_ssh_user is defined and vault_ssh_user | length > 0
+          - vault_ssh_password is defined and vault_ssh_password | length > 0
+          - vault_deploy_user is defined and vault_deploy_user | length > 0
+          - deploy_repo_url is defined and deploy_repo_url | length > 0
+          - deploy_repo_path is defined and deploy_repo_path | length > 0
+        fail_msg: "Variables bootstrap manquantes — vérifier group_vars/all.yml et host_vars/"
+
+
     - name: "Bootstrap VPS : Création de l'utilisateur admin"
       user:
         name: "{{ vault_ssh_user }}"
         shell: /bin/bash
         groups: sudo
         append: yes
+
 
     - name: "Bootstrap VPS : Sudo sans mot de passe pour l'admin"
       copy:
@@ -35,11 +47,13 @@
         mode: '0440'
         validate: '/usr/sbin/visudo -cf %s'
 
+
     - name: "Bootstrap VPS : Injection de la clé SSH publique"
       ansible.posix.authorized_key:
         user: "{{ vault_ssh_user }}"
         state: present
         key: "{{ lookup('file', ssh_key_path) }}"
+
 
     - name: "Bootstrap VPS : Création de l'utilisateur deploy (CI/CD)"
       user:
@@ -48,30 +62,60 @@
         # Groupe docker ajouté en L2 par le rôle docker (Docker pas encore installé ici)
         create_home: yes
 
+
     - name: "Bootstrap VPS : Injection de la clé SSH deploy"
       ansible.posix.authorized_key:
         user: "{{ vault_deploy_user }}"
         state: present
         key: "{{ lookup('file', deploy_ssh_key_path) }}"
 
+
     - name: "Bootstrap VPS : Sudoers limité pour deploy (docker + git + ansible CI)"
       copy:
         content: |
           {{ vault_deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/docker, /usr/bin/docker-compose, /usr/bin/git
-          {{ vault_deploy_user }} ALL=(ALL) NOPASSWD: /usr/local/bin/ansible-playbook, /home/{{ vault_deploy_user }}/.local/bin/ansible-playbook
+          {{ vault_deploy_user }} ALL=(ALL) NOPASSWD: /usr/local/bin/ansible-playbook
         dest: "/etc/sudoers.d/{{ vault_deploy_user }}"
         mode: '0440'
         validate: '/usr/sbin/visudo -cf %s'
 
-    - name: "Bootstrap VPS : Installer pip pour le user deploy"
+
+    - name: "Bootstrap VPS : Installer les prérequis Python"
       apt:
-        name: python3-pip
+        name:
+          - python3-pip
+          - python3-venv
         state: present
 
-    - name: "Bootstrap VPS : Installer Ansible pour le user deploy"
+    - name: "Bootstrap VPS : Installer Git"
+      apt:
+        name: git
+        state: present
+
+
+    - name: "Bootstrap VPS : Créer le venv Ansible dans /opt/ansible"
+      command: python3 -m venv /opt/ansible
+      args:
+        creates: /opt/ansible/bin/python3
+
+
+    - name: "Bootstrap VPS : Installer Ansible dans le venv système"
       pip:
         name: ansible
-      become_user: "{{ vault_deploy_user }}"
+        state: present
+        virtualenv: /opt/ansible
+
+
+    - name: "Bootstrap VPS : Lien symbolique ansible → /usr/local/bin"
+      file:
+        src: "/opt/ansible/bin/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        state: link
+      loop:
+        - ansible-playbook
+        - ansible-galaxy
+        - ansible
+
 
     - name: "Bootstrap VPS : Cloner le repo Ansible"
       git:
@@ -80,8 +124,9 @@
         version: main
       become_user: "{{ vault_deploy_user }}"
 
+
     - name: "Bootstrap VPS : Installer les collections Ansible"
-      command: ansible-galaxy collection install -r {{ deploy_repo_path }}/requirements.yml
+      command: /usr/local/bin/ansible-galaxy collection install -r {{ deploy_repo_path }}/requirement.yml
       become_user: "{{ vault_deploy_user }}"
       args:
         creates: "/home/{{ vault_deploy_user }}/.ansible/collections"
@@ -102,6 +147,14 @@
     ansible_ssh_extra_args: "-o PreferredAuthentications=password -o PubkeyAuthentication=no"
 
   tasks:
+    - name: "Bootstrap Pi : Vérifier les variables critiques"
+      assert:
+        that:
+          - vault_pi_ssh_user is defined and vault_pi_ssh_user | length > 0
+          - vault_pi_bootstrap_user is defined and vault_pi_bootstrap_user | length > 0
+          - vault_pi_bootstrap_password is defined and vault_pi_bootstrap_password | length > 0
+        fail_msg: "Variables bootstrap Pi manquantes — vérifier host_vars/pi_serv.yml"
+
     - name: "Bootstrap Pi : Création de l'utilisateur {{ vault_pi_ssh_user }}"
       user:
         name: "{{ vault_pi_ssh_user }}"

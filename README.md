@@ -1,53 +1,58 @@
-# Homelab Zero Trust — Déploiement Ansible + Terraform
+# Homelab Zero Trust — Deploiement Ansible + Terraform
 
-Infrastructure DevSecOps hybride : un VPS cloud (**Sentinelle**) agit comme DMZ publique, un Raspberry Pi 5 (**Cerveau**) héberge les données, reliés par un tunnel WireGuard chiffré via NetBird mesh. Aucun port domestique ouvert sur Internet.
+Infrastructure DevSecOps hybride : un VPS cloud (**Sentinelle**) agit comme DMZ publique, un Raspberry Pi 5 (**Cerveau**) heberge les donnees, relies par un tunnel WireGuard chiffre via NetBird mesh. Aucun port domestique ouvert sur Internet.
 
---- 
+---
 
 ## Architecture
 
 ```
 Internet
-   │  80/443 (HTTPS), 33073 (NetBird gRPC), 3478 (STUN/TURN)
-   ▼
+   |  80/443 (HTTPS), 33073 (NetBird gRPC), 3478 (STUN/TURN)
+   v
 VPS — Sentinelle (DMZ)
-├── Traefik v2.11          → reverse proxy HTTPS + TLS Let's Encrypt
-├── CrowdSec + nftables    → IDS/IPS comportemental (DROP kernel)
-├── NetBird Server         → orchestrateur mesh VPN WireGuard
-├── Ntfy                   → serveur de notifications push
-├── BentoPDF               → outil PDF (public, stateless)
-└── node-exporter          → métriques système
+|
+|  /opt/backbone/ (L3 — infra critique)
+|  +-- Traefik v2.11        -> reverse proxy HTTPS + TLS Let's Encrypt
+|  +-- NetBird Server       -> orchestrateur mesh VPN WireGuard
+|  +-- NetBird Dashboard    -> UI de gestion du mesh
+|
+|  /opt/sentinel/ (L4 — services applicatifs)
+|  +-- CrowdSec + nftables  -> IDS/IPS comportemental (DROP kernel)
+|  +-- Ntfy                  -> serveur de notifications push
+|  +-- node-exporter         -> metriques systeme
+|
+|  Les 2 stacks partagent le reseau Docker sentinel_net (external)
+|
+        | Tunnel WireGuard chiffre (E2E)
+        v
 
-        ║ Tunnel WireGuard chiffré (E2E)
-        ▼
-
-Raspberry Pi 5 — Cerveau (LAN local, zéro port ouvert)
-├── Seafile              → cloud personnel
-├── Vaultwarden            → gestionnaire de mots de passe
-├── Immich                 → photos/vidéos (~250 Go)
-├── AdGuard Home           → DNS resolver mesh + blocage pub
-├── Portfolio (termfolio)  → site vitrine (public via VPS tunnel)
-├── Veille Sécu            → monitoring CVE/advisories (projet externe)
-├── node-exporter          → métriques système (scrappé par Bientôt)
-└── Bientôt                → panel admin privé : monitoring + alerting (NetBird uniquement)
+Raspberry Pi 5 — Cerveau (LAN local, zero port ouvert)
++-- Seafile              -> cloud personnel
++-- Vaultwarden          -> gestionnaire de mots de passe
++-- Immich               -> photos/videos (~250 Go)
++-- AdGuard Home         -> DNS resolver mesh + blocage pub
++-- Portfolio (termfolio) -> site vitrine (public via VPS tunnel)
++-- Veille Secu          -> monitoring CVE/advisories (projet externe)
++-- node-exporter        -> metriques systeme
++-- Bientot              -> panel admin prive (NetBird uniquement)
 ```
 
-### Réseaux Docker sur le Pi
+### DNS mesh — NetBird + AdGuard
 
-```
-brain_public   → BentoPDF, Portfolio  (accessibles publiquement via VPS proxy)
-brain_private  → Seafile, Vaultwarden, Immich, AdGuard (VPN NetBird requis)
-```
+NetBird est configure pour utiliser **AdGuard Home** (Pi, port 5353) comme DNS resolver pour **tous les peers du mesh**. Quand un device rejoint le mesh, il herite automatiquement du blocage pub et des rewrites DNS internes (sous-domaines prives resolus vers les IPs NetBird).
+
+Le role `netbird-dns` configure ca via l'API NetBird (nameserver group "AdGuard-Pi" applique au groupe "All").
 
 ### ACLs NetBird (Zero Trust)
 
 ```
-admins      ↔ sentinelle  : accès total (SSH, management)
-admins      ↔ cerveau     : accès total (SSH, services)
-sentinelle  → cerveau     : TCP 8090-8094, 3000-3001 (backends Traefik)
-cerveau     → sentinelle  : TCP 9100, 6060 (monitoring node-exporter + CrowdSec)
-sentinelle  ↔ cerveau     : ICMP (health checks)
-Policy Default : SUPPRIMÉE (deny-by-default)
+admins      <-> sentinelle  : acces total (SSH, management)
+admins      <-> cerveau     : acces total (SSH, services)
+sentinelle   -> cerveau     : TCP 8090-8094, 3000-3001 (backends Traefik)
+cerveau      -> sentinelle  : TCP 9100, 6060 (monitoring node-exporter + CrowdSec)
+sentinelle  <-> cerveau     : ICMP (health checks)
+Policy Default : SUPPRIMEE (deny-by-default)
 ```
 
 ---
@@ -56,65 +61,70 @@ Policy Default : SUPPRIMÉE (deny-by-default)
 
 ```
 deployVps/
-├── inventory.ini                          # Hôtes cibles
-├── setup.yml                              # Playbook principal (importe les 4 playbooks)
-├── ansible.cfg                            # SSH keepalives, pipelining
-│
-├── terraform/                             # Lifecycle VPS (Hostinger)
-│   ├── main.tf                            # Provider + ressource VPS
-│   ├── variables.tf                       # Plan, localisation, clé SSH
-│   ├── outputs.tf                         # IP publique → utilisée par Ansible
-│   └── terraform.tfvars.example           # Template des valeurs
-│
-├── playbooks/
-│   ├── bootstrap.yml                      # L0 : création users admin
-│   ├── infrastructure.yml                 # L1-L3 : système, hardening, Docker, mesh
-│   ├── services.yml                       # L4 : stacks applicatives, CrowdSec
-│   ├── operations.yml                     # L5 : backup ZFS, alerting Ntfy
-│   ├── onboard.yml                        # L0-L3 : provisionnement nouvelle machine
-│   └── restore.yml                        # Restauration depuis backup VPS ou USB
-│
-├── roles/
-│   ├── system-vps/                        # L1 : apt, nftables, unattended-upgrades (VPS)
-│   ├── system-pi/                         # L1 : apt, UFW (Pi)
-│   ├── hardening-vps/                     # L1 : SSH durci VPS (Ed25519, port custom)
-│   ├── hardening-pi/                      # L1 : SSH durci Pi (Ed25519, port custom)
-│   ├── docker/                            # L2 : Docker Engine (amd64 + arm64)
-│   ├── netbird-client/                    # L3 : installation client NetBird
-│   ├── netbird-dns/                       # L3 : AdGuard comme DNS resolver NetBird
-│   ├── netbird-acl/                       # L3 : groupes + policies ACL Zero Trust
-│   ├── adguard-dns/                       # L3 : DNS rewrites AdGuard → services Pi
-│   ├── stack-vps/                         # L4 : Traefik, CrowdSec, NetBird Server, Ntfy, node-exporter
-│   ├── stack-pi/                          # L4 : Seafile, Vaultwarden, Immich, AdGuard, BentoPDF, Portfolio
-│   ├── crowdsec-bouncer/                  # L4 : bouncer nftables VPS
-│   ├── veille-secu/                       # L4 : projet externe (git clone + docker compose)
-│   ├── bientot/                           # L4 : projet externe (git clone + docker compose)
-│   ├── backup-zfs/                        # L5 : snapshots + exports chiffrés GPG
-│   └── alerting/                          # L5 : health checks → Ntfy
-│
-├── group_vars/
-│   └── all.yml                            # Versions images, domaine, sous-domaines, IPs NetBird
-│
-├── host_vars/
-│   ├── vps_serv.yml                       # Secrets VPS  ← chiffrer avec ansible-vault
-│   └── pi_serv.yml                        # Secrets Pi   ← chiffrer avec ansible-vault
-│
-├── .github/workflows/
-│   ├── ci.yml                             # Lint + syntax-check sur push/PR
-│   └── deploy.yml                         # workflow_dispatch (deploy manuel)
-│
-└── docs/
-    ├── deploy-ARCHITECTURE.md             # Architecture complète
-    ├── BOOTSTRAP.md                       # Procédure Run 0 pas à pas
-    ├── ADDING-MACHINE.md                  # Comment onboard une nouvelle machine
-    ├── DISASTER-RECOVERY.md               # Tout est mort, comment reconstruire
-    ├── SECRETS.md                         # Gestion des secrets (vault + GitHub)
-    └── SWITCH-VLAN.md                     # Config VLAN Netgear MS305E
++-- inventory.ini                          # Hotes cibles
++-- ansible.cfg                            # SSH keepalives, pipelining
+|
++-- terraform/                             # Lifecycle VPS (Hostinger)
+|   +-- main.tf                            # Provider + ressource VPS
+|   +-- variables.tf                       # Plan, localisation, cle SSH
+|   +-- outputs.tf                         # IP publique -> utilisee par Ansible
+|   +-- terraform.tfvars.example           # Template des valeurs
+|
++-- playbooks/
+|   +-- bootstrap.yml                      # L0 : creation users admin + deploy
+|   +-- infrastructure.yml                 # L1-L3 : systeme, hardening, Docker, backbone, mesh
+|   +-- services.yml                       # L4 : stacks applicatives, CrowdSec
+|   +-- operations.yml                     # L5 : backup ZFS, alerting Ntfy
+|
++-- roles/
+|   +-- # L1 — OS
+|   +-- system-vps/                        # apt, nftables, unattended-upgrades (VPS)
+|   +-- system-pi/                         # apt, UFW (Pi)
+|   +-- hardening-vps/                     # SSH durci VPS (Ed25519, port custom)
+|   +-- hardening-pi/                      # SSH durci Pi (Ed25519, port custom)
+|   +-- # L2 — Runtime
+|   +-- docker/                            # Docker Engine (amd64 + arm64)
+|   +-- # L3 — Backbone reseau + mesh
+|   +-- traefik/                           # Reverse proxy + TLS (/opt/backbone/, VPS only)
+|   +-- netbird-server/                    # Serveur mesh + dashboard (/opt/backbone/, VPS only)
+|   +-- netbird-client/                    # Client NetBird (toutes machines)
+|   +-- netbird-dns/                       # AdGuard comme DNS resolver NetBird (API)
+|   +-- netbird-acl/                       # Groupes + policies ACL Zero Trust
+|   +-- netbird-resolve/                   # Calcul netbird_bind_ip par host
+|   +-- connection-resolver/               # Detection auto connexion/route/port SSH
+|   +-- adguard-dns/                       # DNS rewrites AdGuard -> services Pi
+|   +-- # L4 — Services
+|   +-- stack-vps/                         # CrowdSec, Ntfy, node-exporter (/opt/sentinel/)
+|   +-- stack-pi/                          # Seafile, Vaultwarden, Immich, AdGuard, etc.
+|   +-- crowdsec-bouncer/                  # Bouncer nftables VPS
+|   +-- veille-secu/                       # Projet externe (git clone + docker compose)
+|   +-- bientot/                           # Projet externe (git clone + docker compose)
+|   +-- # L5 — Operations
+|   +-- backup-zfs/                        # Snapshots + exports chiffres GPG
+|   +-- alerting/                          # Health checks -> Ntfy
+|
++-- group_vars/
+|   +-- all.yml                            # Versions images, domaine, sous-domaines
+|
++-- host_vars/
+|   +-- vps_serv.yml                       # Secrets VPS (ansible-vault)
+|   +-- pi_serv.yml                        # Secrets Pi (ansible-vault)
+|
++-- .github/workflows/
+|   +-- deploy.yml                         # workflow_dispatch (deploy manuel)
+|
++-- docs/
+    +-- deploy-ARCHITECTURE.md             # Architecture complete
+    +-- BOOTSTRAP.md                       # Procedure Run 0 pas a pas
+    +-- ADDING-MACHINE.md                  # Comment onboard une nouvelle machine
+    +-- DISASTER-RECOVERY.md               # Tout est mort, comment reconstruire
+    +-- SECRETS.md                         # Gestion des secrets (vault + GitHub)
+    +-- SWITCH-VLAN.md                     # Config VLAN Netgear MS305E
 ```
 
 ---
 
-## Prérequis
+## Prerequis
 
 ```bash
 # Ansible >= 2.14
@@ -123,7 +133,7 @@ pip install ansible
 # Collections requises
 ansible-galaxy collection install ansible.posix
 
-# Clé SSH Ed25519 dédiée
+# Cle SSH Ed25519 dediee
 ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_vps_homelab
 
 # Terraform >= 1.5 (pour le VPS)
@@ -136,12 +146,12 @@ ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_vps_homelab
 
 ### `group_vars/all.yml`
 
-Configuration partagée (pas de secrets). Voir `group_vars/all.yml.example`.
+Configuration partagee (pas de secrets). Voir `group_vars/all.yml.example`.
 
-Variables clés :
+Variables cles :
 - Versions des images Docker
 - Domaine de base et sous-domaines
-- IPs NetBird (renseigner après enrollment)
+- IPs NetBird (renseignees apres enrollment)
 
 ### `host_vars/vps_serv.yml` et `host_vars/pi_serv.yml`
 
@@ -152,46 +162,195 @@ Secrets par machine. Voir les `.example`. Chiffrer avec `ansible-vault encrypt`.
 Tous les sous-domaines doivent pointer vers l'IP publique du VPS :
 
 ```
-mesh.ton-domaine.com      → IP_VPS   (NetBird)
-pdf.ton-domaine.com       → IP_VPS   (BentoPDF, public)
-portfolio.ton-domaine.com → IP_VPS   (Portfolio, public via tunnel)
-cloud.ton-domaine.com     → IP_VPS   (Seafile, privé)
-vault.ton-domaine.com     → IP_VPS   (Vaultwarden, privé)
-adguard.ton-domaine.com   → IP_VPS   (AdGuard, privé)
-photos.ton-domaine.com    → IP_VPS   (Immich, privé)
-ntfy.ton-domaine.com      → IP_VPS   (Ntfy)
-bientot.ton-domaine.com   → IP_VPS   (Bientôt, privé)
+mesh.ton-domaine.com      -> IP_VPS   (NetBird)
+pdf.ton-domaine.com       -> IP_VPS   (BentoPDF, public)
+portfolio.ton-domaine.com -> IP_VPS   (Portfolio, public via tunnel)
+cloud.ton-domaine.com     -> IP_VPS   (Seafile, prive)
+vault.ton-domaine.com     -> IP_VPS   (Vaultwarden, prive)
+adguard.ton-domaine.com   -> IP_VPS   (AdGuard, prive)
+photos.ton-domaine.com    -> IP_VPS   (Immich, prive)
+ntfy.ton-domaine.com      -> IP_VPS   (Ntfy)
+bientot.ton-domaine.com   -> IP_VPS   (Bientot, prive)
 ```
 
 ---
 
-## Déploiement
+## Deploiement depuis zero (Run 0)
 
-### Run 0 — Bootstrap (local, une seule fois)
+> Procedure complete : voir `docs/BOOTSTRAP.md`
 
-```bash
-# 1. Créer le VPS
-cd terraform/ && terraform apply
-
-# 2. Bootstrap + infrastructure
-ansible-playbook -i inventory.ini playbooks/bootstrap.yml --ask-vault-pass
-ansible-playbook -i inventory.ini playbooks/infrastructure.yml --ask-vault-pass
-```
-
-Puis enrollment NetBird manuel + renseigner les IPs dans les variables.
-Voir `docs/BOOTSTRAP.md` pour la procédure complète.
-
-### Run 1+ — Via GitHub Actions (workflow_dispatch)
-
-Paramètres : playbook (infrastructure/services/operations), tags, limit, mode (check/apply).
-
-Le VPS est le bastion — GitHub Actions SSH vers le VPS, le VPS relaye vers le Pi via NetBird.
-
-### Déploiement complet
+### Etape 1 — Creer le VPS
 
 ```bash
-ansible-playbook -i inventory.ini setup.yml --ask-vault-pass
+cd terraform/
+cp terraform.tfvars.example terraform.tfvars
+# Remplir : API token Hostinger, cle SSH publique
+terraform init && terraform apply
+# Output -> IP publique -> mettre dans inventory.ini
 ```
+
+### Etape 2 — Bootstrap (L0 — users + SSH)
+
+```bash
+ansible-playbook -i inventory.ini playbooks/bootstrap.yml --limit dmz --ask-vault-pass
+ansible-playbook -i inventory.ini playbooks/bootstrap.yml --limit lan --ask-vault-pass
+```
+
+### Etape 3 — Infrastructure VPS (L1-L3 — systeme + backbone)
+
+```bash
+ansible-playbook -i inventory.ini playbooks/infrastructure.yml --limit vps_serv --ask-vault-pass
+```
+
+Ca deploie dans l'ordre :
+- L1 : systeme + hardening (nftables, SSH durci)
+- L2 : Docker
+- L3a : **Traefik** (reverse proxy dans `/opt/backbone/`)
+- L3b : **NetBird server + dashboard** (dans `/opt/backbone/`)
+- L3c : NetBird client (daemon installe, PAS enrole)
+
+### Etape 4 — Enrollment NetBird (MANUEL)
+
+Le dashboard est accessible sur `https://mesh.ton-domaine.com`.
+
+```bash
+# Creer 2 setup keys (VPS + Pi) dans le dashboard
+
+# Enroler le VPS
+ssh lucas@<VPS_IP>
+sudo netbird up --setup-key <KEY_VPS> --management-url https://mesh.ton-domaine.com
+netbird status   # noter l'IP 100.x.x.x -> mettre dans host_vars/vps_serv.yml
+```
+
+### Etape 5 — Infrastructure Pi (L1-L3)
+
+```bash
+ansible-playbook -i inventory.ini playbooks/infrastructure.yml --limit pi_serv --ask-vault-pass
+```
+
+Puis enroler le Pi :
+
+```bash
+ssh lucas@<PI_IP>
+sudo netbird up --setup-key <KEY_PI> --management-url https://mesh.ton-domaine.com
+netbird status   # noter l'IP 100.x.x.x -> mettre dans host_vars/pi_serv.yml
+```
+
+### Etape 5b — Enroler le laptop/phone dans NetBird (AVANT services.yml)
+
+> **Obligatoire** : le role `netbird-acl` refuse de supprimer la policy Default
+> s'il ne detecte aucun peer admin (= ni VPS, ni Pi). Sans peer admin, la suppression
+> vous couperait tout acces au mesh sans possibilite de recovery.
+
+```bash
+# Installer le client NetBird sur le laptop
+# https://docs.netbird.io/how-to/installation
+
+# L'enroler dans le mesh
+netbird up --setup-key <KEY_LAPTOP> --management-url https://mesh.ton-domaine.com
+netbird status   # verifier la connexion au mesh
+```
+
+Une fois le laptop visible comme peer dans le dashboard NetBird, `services.yml` pourra
+configurer les ACLs Zero Trust.
+
+### Etape 6 — Services (L4)
+
+```bash
+# Les deux plays tournent dans le meme playbook (VPS puis Pi)
+ansible-playbook playbooks/services.yml --diff --ask-vault-pass
+```
+
+Le role `netbird-dns` configure automatiquement AdGuard comme DNS resolver pour tout le mesh NetBird.
+Le role `netbird-acl` applique les policies Zero Trust (deny-by-default).
+
+### Etape 7 — Operations (L5)
+
+```bash
+ansible-playbook -i inventory.ini playbooks/operations.yml --ask-vault-pass
+```
+
+### Etape 8 — Configurer GitHub Secrets pour la CI
+
+```
+ANSIBLE_VAULT_PASSWORD   -> passphrase du vault
+SSH_PRIVATE_KEY          -> cle du user deploy (PAS admin)
+```
+
+A partir de la, tout deploiement passe par `workflow_dispatch` dans GitHub Actions.
+
+---
+
+## Operations courantes (post-Run 0)
+
+### Mettre a jour un seul service
+
+```bash
+# Mettre a jour Seafile
+ansible-playbook -i inventory.ini playbooks/services.yml --tags stack-pi --limit pi_serv
+
+# Mettre a jour CrowdSec
+ansible-playbook -i inventory.ini playbooks/services.yml --tags stack-vps --limit vps_serv
+
+# Mettre a jour le bouncer nftables
+ansible-playbook -i inventory.ini playbooks/services.yml --tags crowdsec-bouncer --limit vps_serv
+
+# Mettre a jour la veille secu
+ansible-playbook -i inventory.ini playbooks/services.yml --tags veille-secu --limit pi_serv
+
+# Mettre a jour Bientot
+ansible-playbook -i inventory.ini playbooks/services.yml --tags bientot --limit pi_serv
+```
+
+### Mettre a jour le backbone (Traefik / NetBird server)
+
+```bash
+# Attention : toucher au backbone impacte TOUS les services
+ansible-playbook -i inventory.ini playbooks/infrastructure.yml --tags traefik --limit vps_serv
+ansible-playbook -i inventory.ini playbooks/infrastructure.yml --tags netbird-server --limit vps_serv
+```
+
+### Mettre a jour les ACLs ou le DNS mesh
+
+```bash
+# ACLs NetBird (policies Zero Trust)
+ansible-playbook -i inventory.ini playbooks/services.yml --tags netbird-acl --limit pi_serv
+
+# DNS NetBird (AdGuard comme resolver mesh)
+ansible-playbook -i inventory.ini playbooks/services.yml --tags netbird-dns --limit pi_serv
+
+# Rewrites DNS AdGuard (sous-domaines prives -> IPs NetBird)
+ansible-playbook -i inventory.ini playbooks/services.yml --tags adguard-dns --limit pi_serv
+```
+
+### Relancer tout un layer
+
+```bash
+# Tout le layer reseau (L3)
+ansible-playbook -i inventory.ini playbooks/infrastructure.yml --tags layer3
+
+# Tous les services (L4)
+ansible-playbook -i inventory.ini playbooks/services.yml
+
+# Juste les operations (L5)
+ansible-playbook -i inventory.ini playbooks/operations.yml
+```
+
+### Dry-run (ne change rien, montre les diffs)
+
+```bash
+ansible-playbook -i inventory.ini playbooks/services.yml --check --diff
+```
+
+### Via GitHub Actions (CI/CD)
+
+Aller dans Actions > deploy.yml > Run workflow :
+- **playbook** : `infrastructure`, `services`, ou `operations`
+- **tags** : vide (tout) ou specifique (`seafile`, `traefik`, `backup`...)
+- **limit** : vide (tout) ou specifique (`vps_serv`, `pi_serv`)
+- **mode** : `check` (dry-run) ou `apply` (deploiement reel)
+
+Le VPS est le bastion — le connection-resolver detecte automatiquement le mode de connexion (local sur le VPS, SSH+NetBird vers le Pi). Plus besoin de `ci_mode`.
 
 ---
 
@@ -204,7 +363,7 @@ ansible-playbook -i inventory.ini setup.yml --ask-vault-pass
 | `https://pdf.ton-domaine.com` | BentoPDF |
 | `https://portfolio.ton-domaine.com` | Portfolio |
 
-### Services privés (client NetBird requis)
+### Services prives (client NetBird requis)
 
 | URL | Service |
 |-----|---------|
@@ -212,7 +371,7 @@ ansible-playbook -i inventory.ini setup.yml --ask-vault-pass
 | `https://vault.ton-domaine.com` | Vaultwarden |
 | `https://photos.ton-domaine.com` | Immich |
 | `https://adguard.ton-domaine.com` | AdGuard Home |
-| `https://bientot.ton-domaine.com` | Bientôt (panel admin) |
+| `https://bientot.ton-domaine.com` | Bientot (panel admin) |
 
 ### Services VPS
 
@@ -223,27 +382,27 @@ ansible-playbook -i inventory.ini setup.yml --ask-vault-pass
 
 ---
 
-## Backup — Stratégie 3-2-1
+## Backup — Strategie 3-2-1
 
 | Copie | Support | Contenu | Chiffrement |
 |-------|---------|---------|-------------|
 | 1 | ZFS mirror (Pi) | Tout | Non (protection hardware) |
 | 2 | SSD USB air-gapped | Tout (snapshot ZFS complet) | LUKS |
-| 3 | VPS (off-site, 100 Go) | Données critiques | GPG asymétrique |
+| 3 | VPS (off-site, 100 Go) | Donnees critiques | GPG asymetrique |
 
-Chaque rôle déclare ses données via `backup.yml`. Le cron les détecte automatiquement.
+Chaque role declare ses donnees via `backup.yml`. Le cron les detecte automatiquement.
 
 ---
 
-## Ports exposés
+## Ports exposes
 
 ### VPS (Internet)
 
 | Port | Proto | Service |
 |------|-------|---------|
-| 2222 | TCP | SSH (clé Ed25519 uniquement) |
+| 2222 | TCP | SSH (cle Ed25519 uniquement) |
 | 80 | TCP | HTTP (redirect HTTPS via Traefik) |
-| 443 | TCP | HTTPS (Traefik → services) |
+| 443 | TCP | HTTPS (Traefik -> services) |
 | 33073 | TCP | NetBird Management API |
 | 3478 | TCP/UDP | NetBird STUN/TURN |
 
@@ -251,7 +410,7 @@ Chaque rôle déclare ses données via `backup.yml`. Le cron les détecte automa
 
 | Port | Bind | Service |
 |------|------|---------|
-| 2223 | `0.0.0.0` | SSH (clé Ed25519 uniquement) |
+| 2223 | `0.0.0.0` | SSH (cle Ed25519 uniquement) |
 | 8090 | IP NetBird | BentoPDF |
 | 8091 | IP NetBird | Portfolio |
 | 8092 | IP NetBird | Seafile |
@@ -263,14 +422,39 @@ Chaque rôle déclare ses données via `backup.yml`. Le cron les détecte automa
 
 ---
 
-## Sécurité
+## Securite
 
-- Tous les secrets dans `host_vars/` chiffrés avec `ansible-vault`
+- Tous les secrets dans `host_vars/` chiffres avec `ansible-vault`
 - `group_vars/all.yml` ne contient aucun secret
 - Firewall VPS : **nftables natif** (pas UFW) — CrowdSec bouncer injecte dans nftables
 - Firewall Pi : **UFW** (pas de CrowdSec sur le Pi)
-- SSH : clé Ed25519, password désactivé, port custom, root désactivé
-- ACLs NetBird : deny-by-default, policy Default supprimée
+- SSH : cle Ed25519, password desactive, port custom, root desactive
+- ACLs NetBird : deny-by-default, policy Default supprimee
+- DNS mesh : tous les peers utilisent AdGuard via NetBird (blocage pub + rewrites internes)
+
+---
+
+## Troubleshooting
+
+### "Unable to reach one or more DNS servers" (notif NetBird sur le laptop)
+
+**Cause** : le playbook a redeploye ou redemmarre AdGuard Home sur le Pi. Comme AdGuard est le DNS resolver du mesh NetBird (configure par `netbird-dns`), tous les peers perdent la resolution DNS pendant les 2-3 secondes du restart.
+
+**Resolution** : temporaire et auto-resolu. Une fois AdGuard remonte, le DNS revient. Si la notif persiste, verifier que le container AdGuard tourne (`docker ps` sur le Pi) et que le port 5353 est bien expose sur l'IP NetBird.
+
+### netbird-acl echoue : "Aucun peer admin trouve"
+
+**Cause** : le role `netbird-acl` exige au moins un peer admin (ni VPS, ni Pi) avant de toucher aux ACLs. C'est une securite pour eviter un lockout du mesh.
+
+**Resolution** : enroler au moins un client NetBird (laptop, phone) dans le mesh, puis relancer :
+
+```bash
+ansible-playbook playbooks/services.yml --diff --ask-vault-pass --tags netbird-acl
+```
+
+### "Lancement de la Stack" affiche changed a chaque run
+
+**Cause** : `docker compose up -d` rapporte changed des qu'il recree un container (meme config). C'est normal si un template ou une image a change dans le meme run. Si changed apparait sans autre changement en amont, verifier les labels/env dans le template docker-compose.
 
 ---
 
@@ -278,9 +462,9 @@ Chaque rôle déclare ses données via `backup.yml`. Le cron les détecte automa
 
 | Document | Contenu |
 |----------|---------|
-| `docs/deploy-ARCHITECTURE.md` | Architecture complète et décisions |
-| `docs/BOOTSTRAP.md` | Procédure Run 0 pas à pas |
+| `docs/deploy-ARCHITECTURE.md` | Architecture complete et decisions |
+| `docs/BOOTSTRAP.md` | Procedure Run 0 pas a pas |
 | `docs/ADDING-MACHINE.md` | Onboard une nouvelle machine |
-| `docs/DISASTER-RECOVERY.md` | Reconstruire de zéro |
+| `docs/DISASTER-RECOVERY.md` | Reconstruire de zero |
 | `docs/SECRETS.md` | Gestion des secrets |
 | `docs/SWITCH-VLAN.md` | Config VLAN Netgear MS305E |

@@ -75,7 +75,7 @@ done
 # Ajouter le dump SQL si présent
 [ -f /tmp/seafile-db.sql ] && BACKUP_PATHS+=("/tmp/seafile-db.sql")
 
-if [ ${#BACKUP_PATHS[@]} -eq 0 ]; then
+if [ {% raw %}${#BACKUP_PATHS[@]}{% endraw %} -eq 0 ]; then
   echo "${LOG_PREFIX} Aucune donnée à sauvegarder"
   notify "Backup VPS" "Aucune donnée à sauvegarder — vérifier les manifests" "high" "warning"
   exit 0
@@ -123,7 +123,7 @@ cat > "${STATUS_DIR}/vps-latest.json" <<EOJSON
   "success": true,
   "size_bytes": ${ARCHIVE_SIZE},
   "checksum": "sha256:${ARCHIVE_CHECKSUM}",
-  "files_backed_up": ${#BACKUP_PATHS[@]},
+  "files_backed_up": {% raw %}${#BACKUP_PATHS[@]}{% endraw %},
   "vps_disk_remaining_gb": ${VPS_DISK_REMAINING_GB}
 }
 EOJSON

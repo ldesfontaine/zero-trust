@@ -34,5 +34,4 @@
 
 - name: Reconstruire et lancer le container veille-secu
   shell: "cd {{ veille_secu_dir }} && docker compose up -d --build --remove-orphans"
-  become_user: "{{ vault_pi_ssh_user }}"
   when: veille_secu_git.changed or veille_secu_env.changed

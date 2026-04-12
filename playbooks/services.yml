@@ -2,8 +2,8 @@
 # Services applicatifs (L4) — Stacks Docker, CrowdSec
 # Usage : ansible-playbook -i inventory.ini playbooks/services.yml
 #
-# Prérequis : L0-L3 (bootstrap + infrastructure) déjà exécutés.
-# Idempotent : peut être relancé autant de fois que nécessaire.
+# Prerequis : L0-L3 (bootstrap + infrastructure) deja executes.
+# Idempotent : peut etre relance autant de fois que necessaire.
 # ============================================================================
 ---
 
@@ -15,33 +15,24 @@
   become: true
   gather_facts: false
   ignore_unreachable: true
-  vars:
-    ansible_user: "{{ vault_ssh_user }}"
-    ansible_port: 22
-    ansible_ssh_private_key_file: "{{ priv_ssh_key_path }}"
-    ansible_connection: "{{ 'local' if (ci_mode | default(false) | bool) else omit }}"
 
   pre_tasks:
-    - name: "Détecter le port SSH actif ({{ vault_ssh_port }} ou 22)"
-      wait_for:
-        host: "{{ ansible_host }}"
-        port: "{{ vault_ssh_port }}"
-        timeout: 5
-      delegate_to: localhost
-      ignore_errors: true
-      register: ssh_port_hardened
-      become: false
-      when: not (ci_mode | default(false) | bool)
+    - name: "Vérifier les variables critiques (VPS)"
+      assert:
+        that:
+          - vault_ssh_user is defined
+          - vault_ssh_port is defined
+        fail_msg: "Variables VPS manquantes — vérifier group_vars/all.yml et host_vars/vps_serv.yml"
       tags: [always]
 
-    - name: "Basculer sur le port SSH durci si disponible"
-      set_fact:
-        ansible_port: "{{ vault_ssh_port if not ssh_port_hardened.failed else 22 }}"
-      when: not (ci_mode | default(false) | bool)
+    - name: "Resoudre la connexion VPS"
+      include_role:
+        name: connection-resolver
       tags: [always]
 
-    - name: "Re-gather facts avec le bon port"
-      setup:
+    - name: "Resoudre l'IP de binding NetBird (VPS)"
+      include_role:
+        name: netbird-resolve
       tags: [always]
 
   roles:
@@ -59,36 +50,39 @@
   become: true
   gather_facts: false
   ignore_unreachable: true
-  vars:
-    ansible_user: "{{ vault_pi_ssh_user }}"
-    ansible_port: 22
-    ansible_ssh_private_key_file: "{{ priv_ssh_key_path }}"
-    ansible_host: "{{ vault_pi_netbird_ip if (ci_mode | default(false) | bool) else omit }}"
 
   pre_tasks:
-    - name: "Détecter le port SSH actif ({{ vault_pi_ssh_port }} ou 22)"
-      wait_for:
-        host: "{{ ansible_host }}"
-        port: "{{ vault_pi_ssh_port }}"
-        timeout: 5
-      delegate_to: localhost
-      ignore_errors: true
-      register: ssh_port_hardened
-      become: false
+    - name: "Vérifier les variables critiques (Pi)"
+      assert:
+        that:
+          - vault_pi_ssh_user is defined
+          - vault_pi_ssh_port is defined
+          - host_netbird_ip is defined
+        fail_msg: "Variables Pi manquantes — vérifier group_vars/all.yml et host_vars/pi_serv.yml"
       tags: [always]
 
-    - name: "Basculer sur le port SSH durci si disponible"
-      set_fact:
-        ansible_port: "{{ vault_pi_ssh_port if not ssh_port_hardened.failed else 22 }}"
+    - name: "Resoudre la connexion Pi"
+      include_role:
+        name: connection-resolver
       tags: [always]
 
-    - name: "Re-gather facts avec le bon port"
-      setup:
+    - name: "Resoudre l'IP de binding NetBird (Pi)"
+      include_role:
+        name: netbird-resolve
       tags: [always]
 
   roles:
     - role: stack-pi
       tags: [layer4, stack-pi]
+    - role: netbird-dns
+      tags: [layer4, netbird-dns]
+      when: inventory_hostname in groups.get('dns_servers', [])
+    - role: adguard-dns
+      tags: [layer4, adguard-dns]
+      when: inventory_hostname in groups.get('dns_servers', [])
+    - role: netbird-acl
+      tags: [layer4, netbird-acl]
+      when: inventory_hostname in groups.get('dns_servers', [])
     - role: veille-secu
       tags: [layer4, veille-secu]
     - role: bientot

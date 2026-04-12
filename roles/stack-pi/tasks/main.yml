@@ -68,15 +68,30 @@
   when: adguard_conf_file.stat.exists
   notify: Restart AdGuard
 
-# --- Attendre que NetBird soit connecté (nécessaire pour le binding des ports) ---
-- name: Attendre l'interface NetBird (IP {{ vault_pi_netbird_ip }})
-  shell: ip addr show | grep -q "{{ vault_pi_netbird_ip }}"
+# --- DNS conditionnel : .home → Livebox (split DNS) ---
+- name: Ajouter le DNS conditionnel .home vers la Livebox
+  lineinfile:
+    path: "{{ pi_stack_dir }}/adguard/conf/AdGuardHome.yaml"
+    insertafter: '^\s+- https://dns\.google/dns-query'
+    line: '    - "[/home/]192.168.1.1"'
+    state: present
+  when: adguard_conf_file.stat.exists
+  notify: Restart AdGuard
+
+# --- Attendre que NetBird soit connecte (necessaire pour le binding des ports) ---
+# netbird_bind_ip et netbird_mesh_ready sont calcules par le role netbird-resolve
+# en pre_task du play. Si l'IP est configuree mais pas encore sur l'interface,
+# on attend que le daemon NetBird monte l'interface (max 60s).
+- name: Attendre l'interface NetBird (IP {{ host_netbird_ip }})
+  shell: ip addr show | grep -q "{{ host_netbird_ip }}"
   register: nb_iface_check
   retries: 30
   delay: 2
   until: nb_iface_check.rc == 0
   changed_when: false
-  when: vault_pi_netbird_ip != "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+  when:
+    - host_netbird_ip not in ['CHANGE_ME', 'REMPLACER_APRES_ENROLEMENT_NETBIRD']
+    - not (netbird_mesh_ready | default(false) | bool)
 
 # --- Lancement ---
 - name: Cloner ou mettre à jour le dépôt du portfolio
@@ -92,16 +107,16 @@
   args:
     chdir: "{{ pi_stack_dir }}/portfolio"
   become_user: "{{ vault_pi_ssh_user }}"
-  when: portfolio_git.changed
+  when:
+    - portfolio_git.changed
+    - not ansible_check_mode
 
 # Pull uniquement les images registry (pas les images build: locales)
 - name: Pull des images registry (hors images locales)
   shell: |
     cd {{ pi_stack_dir }} && \
-    docker compose pull seafile seafile-db memcached vaultwarden node-exporter adguard adguard-exporter bentopdf immich-server immich-machine-learning immich-redis immich-db
-  become_user: "{{ vault_pi_ssh_user }}"
+    docker compose pull seafile seafile-db memcached vaultwarden node-exporter adguard adguard-exporter bentopdf immich-server immich-redis immich-db
   changed_when: false
 
 - name: Lancement de la Stack Pi
   shell: "cd {{ pi_stack_dir }} && docker compose up -d --remove-orphans"
-  become_user: "{{ vault_pi_ssh_user }}"

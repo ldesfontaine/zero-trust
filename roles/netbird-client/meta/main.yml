@@ -1,5 +1,6 @@
 ---
-dependencies:
-  - docker
+# docker est un prérequis mais géré par l'ordre des rôles dans le playbook.
+# Ne PAS le déclarer ici : double exécution → meta: reset_connection tue SSH.
+dependencies: []
 
 allow_duplicates: false

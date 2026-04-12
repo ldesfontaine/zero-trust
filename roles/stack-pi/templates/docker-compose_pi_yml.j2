@@ -1,13 +1,8 @@
 # ============================================================================
 # Docker Compose Stack Pi — Managed by Ansible
+#
+# L'IP de binding est calculée par le role netbird-resolve (fact per-host).
 # ============================================================================
-
-{# Résolution de l'IP de binding : IP NetBird si disponible, sinon 127.0.0.1 #}
-{% if vault_pi_netbird_ip == "REMPLACER_APRES_ENROLEMENT_NETBIRD" %}
-{% set nb_ip = "127.0.0.1" %}
-{% else %}
-{% set nb_ip = vault_pi_netbird_ip %}
-{% endif %}
 
 services:
 
@@ -20,9 +15,14 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - '{{ nb_ip }}:8090:8080'
+      - '{{ netbird_bind_ip }}:8090:8080'
     networks:
       - brain_public
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/ 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   portfolio:
     image: termfolio:local  # Utilise l'image construite localement sur le Pi
@@ -31,9 +31,14 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - '{{ nb_ip }}:8091:80'
+      - '{{ netbird_bind_ip }}:8091:3000'
     networks:
       - brain_public
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/ 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # ══ RÉSEAU PRIVÉ (admin VPN seulement) ═════════════════════════════════════
 
@@ -50,6 +55,12 @@ services:
       - {{ pi_stack_dir }}/seafile/db:/var/lib/mysql
     networks:
       - brain_private
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   memcached:
     image: memcached:{{ memcached_version }}
@@ -60,6 +71,11 @@ services:
     entrypoint: memcached -m 256
     networks:
       - brain_private
+    healthcheck:
+      test: ["CMD-SHELL", "echo stats | nc localhost 11211 | grep -q pid"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   seafile:
     image: seafileltd/seafile-mc:{{ seafile_version }}
@@ -81,9 +97,15 @@ services:
     volumes:
       - {{ pi_stack_dir }}/seafile/data:/shared
     ports:
-      - '{{ nb_ip }}:8092:80'
+      - '{{ netbird_bind_ip }}:8092:80'
     networks:
       - brain_private
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/ > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   vaultwarden:
     image: vaultwarden/server:{{ vaultwarden_version }}
@@ -98,9 +120,14 @@ services:
     volumes:
       - {{ pi_stack_dir }}/vaultwarden:/data
     ports:
-      - '{{ nb_ip }}:8093:80'
+      - '{{ netbird_bind_ip }}:8093:80'
     networks:
       - brain_private
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/alive > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # ══ IMMICH (photos/vidéos) ═══════════════════════════════════════════════
 
@@ -124,7 +151,7 @@ services:
       - {{ pi_stack_dir }}/immich/upload:/usr/src/app/upload
       - /etc/localtime:/etc/localtime:ro
     ports:
-      - '{{ nb_ip }}:8094:2283'
+      - '{{ netbird_bind_ip }}:{{ immich_port }}:2283'
     networks:
       - brain_private
     healthcheck:
@@ -151,7 +178,7 @@ services:
       - brain_private
 
   immich-db:
-    image: tensorchord/pgvecto-rs:{{ immich_db_version }}
+    image: {{ immich_db_image }}:{{ immich_db_version }}
     container_name: immich-db
     restart: unless-stopped
     security_opt:
@@ -179,13 +206,18 @@ services:
     restart: unless-stopped
     pid: host
     ports:
-      - '{{ nb_ip }}:9100:9100'
+      - '{{ netbird_bind_ip }}:9100:9100'
     volumes:
       - /:/host:ro,rslave
     command:
       - '--path.rootfs=/host'
     networks:
       - brain_private
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9100/metrics 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Note : Grafana/VictoriaMetrics/vmagent supprimés — remplacés par Bientôt
   # (projet externe déployé par son propre rôle Ansible)
@@ -200,11 +232,16 @@ services:
       - {{ pi_stack_dir }}/adguard/work:/opt/adguardhome/work
       - {{ pi_stack_dir }}/adguard/conf:/opt/adguardhome/conf
     ports:
-      - '{{ nb_ip }}:5353:53/tcp'
-      - '{{ nb_ip }}:5353:53/udp'
-      - '{{ nb_ip }}:3000:3000'
+      - '{{ netbird_bind_ip }}:5353:53/tcp'
+      - '{{ netbird_bind_ip }}:5353:53/udp'
+      - '{{ netbird_bind_ip }}:3000:3000'
     networks:
       - brain_private
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/ 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   adguard-exporter:
     image: ebrianne/adguard-exporter:{{ adguard_exporter_version }}
@@ -224,6 +261,11 @@ services:
       - adguard
     networks:
       - brain_private
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9617/metrics 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 networks:
   brain_public:

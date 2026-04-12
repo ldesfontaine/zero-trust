@@ -6,12 +6,13 @@
 #   - Port 3478 UDP pour STUN NetBird
 #   - Traefik gère 80/443 nativement
 # ============================================================================
- 
+
+
 - name: Mettre à jour le cache apt
   apt:
     update_cache: yes
     cache_valid_time: 3600
- 
+
 - name: Mettre à jour tous les paquets
   apt:
     upgrade: safe
@@ -27,6 +28,7 @@
 - name: Installer les outils de base
   apt:
     name:
+      - cron
       - curl
       - python3-pip
       - git
@@ -35,7 +37,7 @@
       - unattended-upgrades
       - apt-listchanges
     state: present
- 
+
 - name: Activer les mises à jour automatiques
   copy:
     content: |
@@ -44,7 +46,7 @@
       APT::Periodic::AutocleanInterval "7";
     dest: /etc/apt/apt.conf.d/20auto-upgrades
     mode: '0644'
- 
+
 - name: Configurer les sources des mises à jour automatiques
   copy:
     content: |
@@ -60,7 +62,27 @@
       Unattended-Upgrade::Automatic-Reboot "false";
     dest: /etc/apt/apt.conf.d/50unattended-upgrades
     mode: '0644'
- 
+
+# --- Ansible venv système ---
+# Créé par le bootstrap (L0). Vérifie seulement que les symlinks
+# existent (idempotent pour les runs CI via system-vps sans re-bootstrap).
+
+- name: Vérifier que le venv Ansible existe
+  stat:
+    path: /opt/ansible/bin/ansible-playbook
+  register: ansible_venv_check
+
+- name: Vérifier les symlinks Ansible dans /usr/local/bin
+  file:
+    src: "/opt/ansible/bin/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    state: link
+  loop:
+    - ansible-playbook
+    - ansible-galaxy
+    - ansible
+  when: ansible_venv_check.stat.exists
+
 # --- Firewall nftables VPS ---
 # nftables natif (PAS UFW) pour éviter les conflits avec CrowdSec bouncer
 # CrowdSec bouncer injecte ses propres chaînes dans nftables

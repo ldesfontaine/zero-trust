@@ -79,13 +79,13 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p ${{ secrets.VPS_SSH_PORT }} ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
           cat >> ~/.ssh/config <<SSHEOF
           Host vps-bastion
             HostName ${{ secrets.VPS_HOST }}
             Port ${{ secrets.VPS_SSH_PORT }}
             User deploy
             IdentityFile ~/.ssh/deploy_key
-            StrictHostKeyChecking no
           SSHEOF
           chmod 600 ~/.ssh/config
 
@@ -98,35 +98,47 @@ jobs:
           VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
         run: |
           # Créer le vault password à la volée sur le VPS, déployer, nettoyer
-          CMD="echo '${VAULT_PASSWORD}' > ~/.vault_pass && chmod 600 ~/.vault_pass"
-          CMD="$CMD && export PATH=\$HOME/.local/bin:\$PATH"
-          CMD="$CMD && cd ~/deployVps && git pull origin main"
-          # sudo : les plays VPS utilisent connection=local en CI,
-          # Ansible doit tourner en root pour que become: true fonctionne
-          CMD="$CMD && sudo \$HOME/.local/bin/ansible-playbook -i inventory.ini ${INPUT_PLAYBOOK}"
-          # Paths absolus : sudo fait tourner ansible en root,
-          # ~ se résoudrait en /root/ au lieu de /home/deploy/
-          CMD="$CMD --vault-password-file \$HOME/.vault_pass"
-          CMD="$CMD -e ansible_ssh_private_key_file=\$HOME/.ssh/id_ed25519"
-          CMD="$CMD -e ci_mode=true"
+          # Chemins absolus obligatoires : sudo change $HOME en /root/
+          DEPLOY_HOME="/home/deploy"
+
+          # Construire la commande ansible-playbook
+          ANSIBLE_CMD="sudo /usr/local/bin/ansible-playbook -i inventory.ini ${INPUT_PLAYBOOK}"
+          ANSIBLE_CMD="${ANSIBLE_CMD} --vault-password-file ${DEPLOY_HOME}/.vault_pass"
+          ANSIBLE_CMD="${ANSIBLE_CMD} -e ansible_ssh_private_key_file=${DEPLOY_HOME}/.ssh/id_ed25519"
+          ANSIBLE_CMD="${ANSIBLE_CMD} --diff"
 
           # Mode check ou apply
           if [ "${INPUT_MODE}" = "check" ]; then
-            CMD="$CMD --check --diff"
+            ANSIBLE_CMD="${ANSIBLE_CMD} --check"
           fi
 
           # Tags optionnels
           if [ -n "${INPUT_TAGS}" ]; then
-            CMD="$CMD --tags '${INPUT_TAGS}'"
+            ANSIBLE_CMD="${ANSIBLE_CMD} --tags '${INPUT_TAGS}'"
           fi
 
           # Limit optionnel
           if [ -n "${INPUT_LIMIT}" ]; then
-            CMD="$CMD --limit '${INPUT_LIMIT}'"
+            ANSIBLE_CMD="${ANSIBLE_CMD} --limit '${INPUT_LIMIT}'"
           fi
 
-          # Toujours supprimer le vault password après exécution
-          CMD="$CMD ; rm -f ~/.vault_pass"
+          echo "Commande: ${ANSIBLE_CMD}"
 
-          echo "Commande: $CMD"
-          ssh vps-bastion "$CMD"
+          # Exécuter sur le VPS :
+          # 1. Écrire le vault password via heredoc (pas d'echo dans les args SSH)
+          # 2. Pull le code
+          # 3. Lancer ansible-playbook
+          # 4. Toujours nettoyer le vault password (même en cas d'échec)
+          # 5. Propager le exit code d'ansible-playbook (pas celui de rm)
+          ssh vps-bastion bash -s <<REMOTE_EOF
+          trap 'rm -f ${DEPLOY_HOME}/.vault_pass' EXIT
+
+          cat > ${DEPLOY_HOME}/.vault_pass <<'VAULTEOF'
+          ${VAULT_PASSWORD}
+          VAULTEOF
+          chmod 600 ${DEPLOY_HOME}/.vault_pass
+
+          cd ${DEPLOY_HOME}/deployVps && git pull origin main
+
+          ${ANSIBLE_CMD}
+          REMOTE_EOF

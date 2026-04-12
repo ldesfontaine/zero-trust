@@ -80,12 +80,15 @@
 # NetBird (WireGuard) gère lui-même son port via le kernel, pas UFW.
 # Le port 53 AdGuard sera restreint à l'interface wt0 manuellement
 # après l'enrollment NetBird (vault_pi_netbird_ip doit être connu).
+# UFW n'est pas encore installé en check mode (apt simulé) → skip pour éviter
+# un faux échec. En apply, ufw est installé par le task apt juste au-dessus.
 - name: UFW - Autoriser SSH (port custom)
   ufw:
     rule: allow
     port: "{{ vault_pi_ssh_port | string }}"
     proto: tcp
- 
+  when: not ansible_check_mode
+
 # AdGuard DNS écoute sur 0.0.0.0:53 pour éviter le conflit avec NetBird DNS
 # UFW bloque le port 53 depuis l'extérieur — seul le réseau NetBird peut y accéder
 - name: UFW - Bloquer DNS depuis l'extérieur (AdGuard protégé par NetBird)
@@ -93,3 +96,4 @@
     rule: deny
     port: "53"
     proto: any
+  when: not ansible_check_mode

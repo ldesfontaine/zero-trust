@@ -27,8 +27,17 @@
     validate_certs: true
   register: netbird_dns_list
   delegate_to: localhost
+  vars:
+    ansible_connection: local
   become: false
-  when: vault_pi_netbird_ip != "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+  failed_when: false
+  changed_when: false
+  when: vault_pi_netbird_ip not in ["REMPLACER_APRES_ENROLEMENT_NETBIRD", "CHANGE_ME"]
+
+- name: Déduire si l'API NetBird est joignable
+  set_fact:
+    netbird_api_reachable: "{{ (netbird_dns_list.status | default(-1)) == 200 }}"
+  when: vault_pi_netbird_ip not in ["REMPLACER_APRES_ENROLEMENT_NETBIRD", "CHANGE_ME"]
  
 - name: Vérifier si AdGuard est déjà configuré
   set_fact:
@@ -39,7 +48,9 @@
         | selectattr('nameservers', 'search', vault_pi_netbird_ip)
         | list | length > 0
       }}
-  when: vault_pi_netbird_ip != "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+  when:
+    - vault_pi_netbird_ip not in ["REMPLACER_APRES_ENROLEMENT_NETBIRD", "CHANGE_ME"]
+    - netbird_api_reachable | default(false)
  
 # Récupère la liste des groupes pour trouver l'UUID du groupe "All"
 # L'API NetBird n'accepte pas le nom, seulement l'ID interne
@@ -56,7 +67,8 @@
   delegate_to: localhost
   become: false
   when:
-    - vault_pi_netbird_ip != "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+    - vault_pi_netbird_ip not in ["REMPLACER_APRES_ENROLEMENT_NETBIRD", "CHANGE_ME"]
+    - netbird_api_reachable | default(false)
     - not (adguard_dns_exists | default(false))
  
 - name: Extraire l'ID du groupe All
@@ -71,7 +83,8 @@
   delegate_to: localhost
   become: false
   when:
-    - vault_pi_netbird_ip != "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+    - vault_pi_netbird_ip not in ["REMPLACER_APRES_ENROLEMENT_NETBIRD", "CHANGE_ME"]
+    - netbird_api_reachable | default(false)
     - not (adguard_dns_exists | default(false))
  
 - name: Configurer AdGuard comme DNS resolver dans NetBird
@@ -99,15 +112,19 @@
   delegate_to: localhost
   become: false
   when:
-    - vault_pi_netbird_ip != "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+    - vault_pi_netbird_ip not in ["REMPLACER_APRES_ENROLEMENT_NETBIRD", "CHANGE_ME"]
+    - netbird_api_reachable | default(false)
     - not (adguard_dns_exists | default(false))
  
 - name: "INFO — DNS NetBird"
   debug:
     msg: >
-      {% if vault_pi_netbird_ip == "REMPLACER_APRES_ENROLEMENT_NETBIRD" %}
+      {% if vault_pi_netbird_ip in ["REMPLACER_APRES_ENROLEMENT_NETBIRD", "CHANGE_ME"] %}
       DNS NetBird non configuré — enrollment NetBird requis d'abord.
       Relancer Ansible après enrollment pour configurer AdGuard comme DNS.
+      {% elif not (netbird_api_reachable | default(false)) %}
+      API NetBird injoignable — vérifier que le serveur NetBird est up et accessible.
+      Relancer Ansible après avoir validé l'accès à https://{{ netbird_fqdn }}.
       {% else %}
       AdGuard configuré comme DNS resolver NetBird sur {{ vault_pi_netbird_ip }}:5353
       Tous les peers du mesh utilisent le blocage pub AdGuard.

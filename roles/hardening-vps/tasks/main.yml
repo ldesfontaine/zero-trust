@@ -19,11 +19,13 @@
   vars:
     ssh_user: "{{ vault_ssh_user }}"
     ssh_port: "{{ vault_ssh_port }}"
+  register: _sshd_config
 
 # --- Restart SSH : deux chemins selon le mode de connexion ---
 #
 # Mode laptop (SSH distant) : async pour ne pas tuer la connexion Ansible
 # Mode CI (connection: local) : restart direct, Ansible ne passe pas par SSH
+# Ne redémarre QUE si la config a changé (évite de couper la connexion pour rien)
 
 - name: Redémarrer SSH (async — connexion encore sur port 22)
   systemd:
@@ -32,22 +34,42 @@
   async: 1
   poll: 0
   ignore_errors: true
-  when: ansible_connection | default('ssh') != 'local'
+  when:
+    - _sshd_config is changed
+    - ansible_connection | default('ssh') != 'local'
 
 - name: Redémarrer SSH (mode local — pas de risque de coupure)
   systemd:
     name: sshd
     state: restarted
-  when: ansible_connection | default('ssh') == 'local'
+  when:
+    - _sshd_config is changed
+    - ansible_connection | default('ssh') == 'local'
 
-- name: Attendre que SSH soit disponible sur le nouveau port
+- name: Attendre que SSH soit disponible sur le nouveau port (depuis le poste)
   wait_for:
-    host: "{{ '127.0.0.1' if ansible_connection | default('ssh') == 'local' else ansible_host }}"
+    host: "{{ ansible_host }}"
     port: "{{ vault_ssh_port }}"
     delay: 3
     timeout: 30
   delegate_to: localhost
+  vars:
+    ansible_connection: local
   become: false
+  when:
+    - _sshd_config is changed
+    - ansible_connection | default('ssh') != 'local'
+
+- name: Attendre que SSH soit disponible sur le nouveau port (mode local)
+  wait_for:
+    host: "127.0.0.1"
+    port: "{{ vault_ssh_port }}"
+    delay: 3
+    timeout: 30
+  become: false
+  when:
+    - _sshd_config is changed
+    - ansible_connection | default('ssh') == 'local'
 
 # Maintenant que le port est confirmé, Ansible bascule dessus
 - name: Mise à jour du port SSH pour la session Ansible en cours
@@ -55,11 +77,34 @@
     ansible_port: "{{ vault_ssh_port }}"
   when: ansible_connection | default('ssh') != 'local'
 
-# Supprimer la règle port 22 dans nftables (bootstrap terminé)
-- name: Supprimer la règle SSH port 22 dans nftables (bootstrap terminé)
-  replace:
-    path: /etc/nftables.conf
-    regexp: '^\s*# SSH bootstrap.*\n\s*tcp dport 22 accept\n'
-    replace: ''
+# Fermer le port 22 dans nftables (bootstrap terminé)
+# Le template nftables_conf.j2 conditionne le port 22 sur ssh_bootstrap_open.
+# On pose un fact persistant et on re-génère le template sans le port 22.
+- name: Créer le dossier facts.d
+  file:
+    path: /etc/ansible/facts.d
+    state: directory
+    owner: root
+    mode: '0755'
+
+- name: Désactiver le port 22 dans nftables (flag bootstrap terminé)
+  copy:
+    content: '{"ssh_bootstrap_open": false}'
+    dest: /etc/ansible/facts.d/ssh_hardened.fact
+    owner: root
+    mode: '0644'
   when: vault_ssh_port | int != 22
+  register: _ssh_bootstrap_flag
+
+- name: Re-générer nftables.conf sans le port 22
+  template:
+    src: "{{ role_path }}/../system-vps/templates/nftables_conf.j2"
+    dest: /etc/nftables.conf
+    owner: root
+    mode: '0644'
+  vars:
+    ssh_bootstrap_open: false
+  when:
+    - vault_ssh_port | int != 22
+    - _ssh_bootstrap_flag is changed
   notify: Reload nftables

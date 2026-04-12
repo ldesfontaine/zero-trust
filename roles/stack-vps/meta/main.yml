@@ -1,5 +1,6 @@
 ---
-dependencies:
-  - docker
+# docker est un prérequis mais géré par l'ordre des playbooks (infrastructure avant services).
+# Ne PAS le déclarer ici : double exécution sinon.
+dependencies: []
 
 allow_duplicates: false

@@ -21,7 +21,8 @@ nginx_version: "alpine"
 ntfy_version: "v2.11.0"
 immich_version: "v1.134.0"
 immich_redis_version: "7-alpine"
-immich_db_version: "pg16-v0.3.0"
+immich_db_image: "ghcr.io/immich-app/postgres"
+immich_db_version: "14-vectorchord0.3.0-pgvectors0.2.0"
 
 # --- Domaine de base ---
 vault_base_domain: "CHANGE_ME"                 # ex: example.com
@@ -55,13 +56,24 @@ priv_ssh_key_path: "~/.ssh/id_ed25519_vps_homelab"
 vault_deploy_user: "deploy"
 deploy_ssh_key_path: "~/.ssh/id_ed25519_deploy.pub"
 
+# --- Repo Ansible sur le VPS (cloné par le user deploy au bootstrap) ---
+deploy_repo_url: "https://github.com/ldesfontaine/deployVps.git"
+deploy_repo_path: "/home/deploy/deployVps"
+
 # --- Connexion finale (Play 4) ---
+vault_ssh_user: "lucas"
+vault_ssh_port: 2222
 vault_pi_ssh_user: "lucas"
 
-# --- NetBird IPs WireGuard ---
-# Renseigner après enrollment des deux machines puis relancer Ansible
-vault_vps_netbird_ip: "REMPLACER_APRES_ENROLEMENT_NETBIRD"
-vault_pi_netbird_ip: "REMPLACER_APRES_ENROLEMENT_NETBIRD"
+# --- Ports applicatifs (Pi via VPS) ---
+bientot_port: "3001"
+
+# --- NetBird IPs WireGuard (aliases cross-host) ---
+# La source de verite est host_netbird_ip dans chaque host_vars/.
+# Ces variables derivees permettent aux templates cross-host (bientot.env,
+# traefik_dynamic, netbird-acl) de referencer l'IP d'une autre machine.
+vault_vps_netbird_ip: "{{ hostvars['vps_serv'].host_netbird_ip | default('CHANGE_ME') }}"
+vault_pi_netbird_ip: "{{ hostvars['pi_serv'].host_netbird_ip | default('CHANGE_ME') }}"
 
 # --- IP publique VPS ---
 vault_vps_mgmt_ip: "CHANGE_ME"                 # IP publique de ton VPS

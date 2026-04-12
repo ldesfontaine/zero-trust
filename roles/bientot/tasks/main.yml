@@ -24,6 +24,14 @@
   become_user: "{{ vault_pi_ssh_user }}"
   register: bientot_git
 
+- name: Corriger l'import Go inutilise (workaround temporaire)
+  lineinfile:
+    path: "{{ bientot_dir }}/internal/collector/docker.go"
+    regexp: '^\s*"strings"\s*$'
+    state: absent
+  become_user: "{{ vault_pi_ssh_user }}"
+  register: bientot_workaround
+
 - name: Déployer le fichier .env (variables Ansible → config)
   template:
     src: bientot.env.j2
@@ -34,5 +42,4 @@
 
 - name: Reconstruire et lancer le container bientot
   shell: "cd {{ bientot_dir }} && docker compose up -d --build --remove-orphans"
-  become_user: "{{ vault_pi_ssh_user }}"
-  when: bientot_git.changed or bientot_env.changed
+  when: bientot_git.changed or bientot_env.changed or bientot_workaround.changed

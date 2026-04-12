@@ -1,0 +1,32 @@
+# Relaxation temporaire — fixer progressivement puis supprimer les warn_list
+# Les violations listées ici produisent des warnings, pas des erreurs
+warn_list:
+  - fqcn[action-core]   # apt → ansible.builtin.apt (gros chantier, ~250 occurrences)
+  - fqcn[action]         # ufw → community.general.ufw
+  - yaml[truthy]         # yes/no → true/false
+  - yaml[trailing-spaces]
+  - yaml[line-length]
+  - yaml[new-line-at-end-of-file]
+  - yaml[commas]
+  - yaml[colons]
+  - yaml[indentation]
+  - partial-become[task] # become_user sans become au même niveau
+  - ignore-errors        # préférer failed_when
+  - package-latest       # state: latest → versionner
+  - name[template]       # Jinja dans les noms de tâches
+  - name[missing]        # tâches sans nom
+  - name[play]           # import_playbook sans nom (faux positif)
+  - jinja[spacing]       # alignement Jinja dans les templates
+  - schema[meta]         # author manquant dans meta/main.yml
+  - no-changed-when      # changed_when manquant sur command/shell
+  - var-naming[no-role-prefix]  # vars sans préfixe du rôle
+  - risky-shell-pipe     # pipes dans shell sans pipefail
+  - command-instead-of-module   # curl/wget au lieu de uri/get_url
+  - no-handler           # notify au lieu de when: changed
+  - command-instead-of-shell    # shell au lieu de command
+  - risky-file-permissions      # permissions non explicites
+
+# Fichiers exclus du lint
+exclude_paths:
+  - .github/
+  - terraform/

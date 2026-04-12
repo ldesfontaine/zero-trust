@@ -16,22 +16,50 @@
     dest: /etc/apt/sources.list.d/crowdsec_crowdsec.list
     mode: '0644'
 
+# En check mode, copy n'écrit pas réellement le repo → apt update inutile
+# et le package bouncer introuvable.
 - name: Mettre à jour le cache apt pour CrowdSec
   apt:
     update_cache: yes
- 
+  when: not ansible_check_mode
+
 - name: Installer le bouncer firewall CrowdSec (nftables)
   apt:
     name: crowdsec-firewall-bouncer-nftables
     state: latest
- 
+  when: not ansible_check_mode
+
+- name: Vérifier si le bouncer est déjà installé
+  command: which crowdsec-firewall-bouncer
+  register: _bouncer_present
+  failed_when: false
+  changed_when: false
+  check_mode: false
+
 - name: Attendre que le LAPI CrowdSec soit disponible
   wait_for:
     host: 127.0.0.1
     port: 8080
-    timeout: 60
-    delay: 5
- 
+    timeout: 90
+    delay: 10
+  when: not ansible_check_mode
+
+- name: Vérifier l'état du LAPI CrowdSec (cscli)
+  shell: |
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+      docker exec crowdsec cscli lapi status && exit 0
+      sleep 6
+    done
+    exit 1
+  register: crowdsec_lapi_status
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Définir l'état LAPI CrowdSec
+  set_fact:
+    crowdsec_lapi_ok: "{{ crowdsec_lapi_status.rc | default(1) == 0 }}"
+
 - name: Déployer la configuration du bouncer
   template:
     src: crowdsec-firewall-bouncer_yaml.j2
@@ -40,10 +68,19 @@
     group: root
     mode: '0600'
   notify: Restart Bouncer
- 
+  when: not ansible_check_mode or _bouncer_present.rc == 0
+
 - name: Activer et démarrer le bouncer firewall CrowdSec
   systemd:
     name: crowdsec-firewall-bouncer
     state: started
     enabled: yes
+  when: not ansible_check_mode or _bouncer_present.rc == 0
+
+- name: "INFO — Bouncer CrowdSec ignoré (LAPI indisponible)"
+  debug:
+    msg: >
+      LAPI CrowdSec indisponible (cscli lapi status KO). Bouncer non démarré.
+      Relancer plus tard quand CrowdSec est healthy.
+  when: not (crowdsec_lapi_ok | default(false))
  
