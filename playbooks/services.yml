@@ -1,89 +1,39 @@
 # ============================================================================
-# Services applicatifs (L4) — Stacks Docker, CrowdSec
-# Usage : ansible-playbook -i inventory.ini playbooks/services.yml
+# Phase 2 — Services (apps + backup + monitoring)
+# Usage : ansible-playbook -i inventory.ini playbooks/services.yml --ask-vault-pass
 #
-# Prerequis : L0-L3 (bootstrap + infrastructure) deja executes.
-# Idempotent : peut etre relance autant de fois que necessaire.
+# Prérequis : infrastructure.yml + enrollment NetBird effectué.
+# Idempotent : peut être relancé autant de fois que nécessaire.
 # ============================================================================
 ---
 
-# ============================================================
-# PLAY 1 — Services VPS / Sentinelle (L4)
-# ============================================================
-- name: "Services Sentinelle (VPS) — L4"
+# Phase 2 — VPS
+- name: "Services Sentinelle (VPS)"
   hosts: dmz
   become: true
   gather_facts: false
   ignore_unreachable: true
-
   pre_tasks:
-    - name: "Vérifier les variables critiques (VPS)"
-      assert:
-        that:
-          - vault_ssh_user is defined
-          - vault_ssh_port is defined
-        fail_msg: "Variables VPS manquantes — vérifier group_vars/all.yml et host_vars/vps_serv.yml"
+    - include_role: { name: connection-resolver }
       tags: [always]
-
-    - name: "Resoudre la connexion VPS"
-      include_role:
-        name: connection-resolver
+    - include_role: { name: netbird-client, tasks_from: resolve.yml }
       tags: [always]
-
-    - name: "Resoudre l'IP de binding NetBird (VPS)"
-      include_role:
-        name: netbird-resolve
-      tags: [always]
-
   roles:
-    - role: stack-vps
-      tags: [layer4, stack-vps]
-    - role: crowdsec-bouncer
-      tags: [layer4, crowdsec-bouncer]
+    - { role: services-vps,  tags: [services, crowdsec, ntfy, bientot-agent] }
+    - { role: monitoring,    tags: [monitoring, alerting, trivy] }
 
-
-# ============================================================
-# PLAY 2 — Services Pi / Cerveau (L4)
-# ============================================================
-- name: "Services Cerveau (Pi) — L4"
+# Phase 2 — Pi
+- name: "Services Cerveau (Pi)"
   hosts: lan
   become: true
   gather_facts: false
   ignore_unreachable: true
-
   pre_tasks:
-    - name: "Vérifier les variables critiques (Pi)"
-      assert:
-        that:
-          - vault_pi_ssh_user is defined
-          - vault_pi_ssh_port is defined
-          - host_netbird_ip is defined
-        fail_msg: "Variables Pi manquantes — vérifier group_vars/all.yml et host_vars/pi_serv.yml"
+    - include_role: { name: connection-resolver }
       tags: [always]
-
-    - name: "Resoudre la connexion Pi"
-      include_role:
-        name: connection-resolver
+    - include_role: { name: netbird-client, tasks_from: resolve.yml }
       tags: [always]
-
-    - name: "Resoudre l'IP de binding NetBird (Pi)"
-      include_role:
-        name: netbird-resolve
-      tags: [always]
-
   roles:
-    - role: stack-pi
-      tags: [layer4, stack-pi]
-    - role: netbird-dns
-      tags: [layer4, netbird-dns]
-      when: inventory_hostname in groups.get('dns_servers', [])
-    - role: adguard-dns
-      tags: [layer4, adguard-dns]
-      when: inventory_hostname in groups.get('dns_servers', [])
-    - role: netbird-acl
-      tags: [layer4, netbird-acl]
-      when: inventory_hostname in groups.get('dns_servers', [])
-    - role: veille-secu
-      tags: [layer4, veille-secu]
-    - role: bientot
-      tags: [layer4, bientot]
+    - { role: services-pi,  tags: [services, seafile, vaultwarden, immich, adguard, bientot, veille-secu, portfolio] }
+    - { role: backup,       tags: [backup, zfs] }
+    - { role: monitoring,   tags: [monitoring, alerting, trivy] }

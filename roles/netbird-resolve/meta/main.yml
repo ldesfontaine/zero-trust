@@ -1,6 +1,0 @@
----
-dependencies: []
-
-galaxy_info:
-  description: "Resoudre l'IP de binding NetBird par host"
-  min_ansible_version: "2.14"

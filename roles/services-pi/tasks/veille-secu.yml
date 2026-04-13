@@ -1,0 +1,29 @@
+# Veille sécu — image GHCR (plus de git clone + build)
+---
+- name: Créer le répertoire veille-secu
+  file:
+    path: "{{ pi_stack_dir }}/veille-secu"
+    state: directory
+    owner: "{{ vault_pi_ssh_user }}"
+    group: "{{ vault_pi_ssh_user }}"
+    mode: '0755'
+
+- name: Pull de l'image veille-secu
+  shell: "cd {{ pi_stack_dir }} && docker compose pull veille-secu"
+  changed_when: false
+
+- name: Lancement de veille-secu
+  shell: "cd {{ pi_stack_dir }} && docker compose up -d veille-secu"
+  register: _veille_secu_up
+  changed_when: "'Started' in _veille_secu_up.stderr or 'Created' in _veille_secu_up.stderr"
+
+- name: Attendre que veille-secu soit opérationnel
+  uri:
+    url: "http://{{ netbird_bind_ip }}:{{ veille_secu_web_port }}"
+    status_code: [200, 301, 302]
+  register: _veille_secu_health
+  retries: 10
+  delay: 5
+  until: _veille_secu_health.status is defined and _veille_secu_health.status in [200, 301, 302]
+  failed_when: false
+  when: not ansible_check_mode

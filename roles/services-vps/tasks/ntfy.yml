@@ -1,0 +1,22 @@
+# Ntfy — notifications push (public, auth gérée par Ntfy)
+---
+- name: Créer les dossiers Ntfy
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ vault_ssh_user }}"
+    group: "{{ vault_ssh_user }}"
+    mode: '0755'
+  loop:
+    - "{{ stack_dir }}/ntfy"
+    - "{{ stack_dir }}/ntfy/cache"
+    - "{{ stack_dir }}/ntfy/etc"
+
+- name: Pull de l'image Ntfy
+  shell: "cd {{ stack_dir }} && docker compose pull ntfy"
+  changed_when: false
+
+- name: Lancement de Ntfy
+  shell: "cd {{ stack_dir }} && docker compose up -d ntfy"
+  register: _ntfy_up
+  changed_when: "'Started' in _ntfy_up.stderr or 'Created' in _ntfy_up.stderr"

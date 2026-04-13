@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Managed by Ansible — ne pas modifier manuellement
+#
+# Maintenance hebdomadaire des images Docker
+# - Pull les nouvelles versions
+# - Redémarre les containers si image mise à jour
+# - Prune les anciennes images
+# - Scan Trivy des images (--format json + jq, alerte Ntfy si CVE HIGH/CRITICAL)
+
+set -euo pipefail
+
+COMPOSE_DIR="{{ stack_dir | default(pi_stack_dir) }}"
+NTFY_URL="https://{{ ntfy_subdomain }}.{{ vault_base_domain }}/docker-maintenance"
+NTFY_AUTH="Authorization: Bearer {{ vault_ntfy_auth_token }}"
+LOG_PREFIX="[docker-maintenance]"
+DATE=$(date '+%Y-%m-%d %H:%M')
+UPDATED_IMAGES=""
+TRIVY_ALERTS=""
+
+echo "${LOG_PREFIX} ${DATE} — Début de la maintenance"
+
+# --- 1. Pull des images ---
+echo "${LOG_PREFIX} Pull des images..."
+cd "${COMPOSE_DIR}"
+
+PULL_OUTPUT=$(docker compose pull 2>&1) || true
+echo "${PULL_OUTPUT}"
+
+# Détecter les images mises à jour
+UPDATED_IMAGES=$(echo "${PULL_OUTPUT}" | grep -i "pulled\|downloaded" || true)
+
+# --- 2. Redémarrer les containers avec des images mises à jour ---
+if [ -n "${UPDATED_IMAGES}" ]; then
+  echo "${LOG_PREFIX} Images mises à jour détectées, redémarrage..."
+  docker compose up -d --remove-orphans
+else
+  echo "${LOG_PREFIX} Aucune mise à jour d'image"
+fi
+
+# --- 3. Prune des anciennes images ---
+echo "${LOG_PREFIX} Prune des images non utilisées..."
+PRUNE_OUTPUT=$(docker image prune -af --filter "until=168h" 2>&1)
+echo "${PRUNE_OUTPUT}"
+
+# --- 4. Scan Trivy (CVE HIGH/CRITICAL — format JSON + jq) ---
+echo "${LOG_PREFIX} Scan Trivy des images en cours d'exécution..."
+
+for IMAGE in $(docker ps --format '{% raw %}{{.Image}}{% endraw %}' | sort -u); do
+  echo "${LOG_PREFIX} Scan: ${IMAGE}"
+  VULN_COUNT=$(trivy image --severity HIGH,CRITICAL --no-progress --format json "${IMAGE}" 2>/dev/null | jq '[.Results[]?.Vulnerabilities // [] | length] | add // 0')
+
+  if [ "${VULN_COUNT}" -gt 0 ]; then
+    TRIVY_ALERTS="${TRIVY_ALERTS}\n${IMAGE}: ${VULN_COUNT} vulnérabilités HIGH/CRITICAL"
+    echo "${LOG_PREFIX} ALERTE: ${IMAGE} — ${VULN_COUNT} CVE"
+  fi
+done
+
+# --- 5. Notification Ntfy ---
+if [ -n "${TRIVY_ALERTS}" ]; then
+  BODY="Scan sécurité — vulnérabilités détectées:\n${TRIVY_ALERTS}"
+  PRIORITY="high"
+  TAGS="warning"
+  TITLE="Docker Maintenance — CVE détectées"
+elif [ -n "${UPDATED_IMAGES}" ]; then
+  BODY="Images mises à jour et containers redémarrés sur $(hostname)"
+  PRIORITY="default"
+  TAGS="package"
+  TITLE="Docker Maintenance — Images mises à jour"
+else
+  BODY="Aucune mise à jour, aucune CVE critique sur $(hostname)"
+  PRIORITY="low"
+  TAGS="white_check_mark"
+  TITLE="Docker Maintenance — RAS"
+fi
+
+curl -s \
+  -H "${NTFY_AUTH}" \
+  -H "Title: ${TITLE}" \
+  -H "Priority: ${PRIORITY}" \
+  -H "Tags: ${TAGS}" \
+  -d "$(echo -e "${BODY}")" \
+  "${NTFY_URL}" || echo "${LOG_PREFIX} WARN: notification Ntfy échouée"
+
+echo "${LOG_PREFIX} ${DATE} — Maintenance terminée"

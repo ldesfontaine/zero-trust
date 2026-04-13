@@ -1,0 +1,4 @@
+galaxy_info:
+  description: "VPS — paquets, nftables, hardening SSH"
+  min_ansible_version: "2.14"
+allow_duplicates: false

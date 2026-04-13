@@ -1,0 +1,190 @@
+# ============================================================================
+# Traefik Dynamic Config — Services Pi via NetBird mesh
+# Managed by Ansible — ne pas modifier manuellement
+#
+# Flux : visiteur → HTTPS VPS → Traefik → NetBird mesh → Pi:port
+#
+# Middlewares de sécurité définis ici et appliqués selon le type de service :
+#   - Public  : security-headers + rate-limit-public
+#   - Privé   : security-headers + netbird-only
+#   - Ntfy    : security-headers seul (public, auth gérée par Ntfy)
+# ============================================================================
+
+{% set pi_ip_ready = vault_pi_netbird_ip not in ['CHANGE_ME', 'REMPLACER_APRES_ENROLEMENT_NETBIRD'] %}
+{% if not ((netbird_mesh_ready | default(false) | bool) and pi_ip_ready) %}
+# Mesh VPS non opérationnel ou IP Pi non renseignée — routing Pi désactivé
+# Relancer Ansible après enrollment NetBird pour activer les services publics
+{}
+{% else %}
+http:
+
+  # ── Middlewares ─────────────────────────────────────────────────────────────
+
+  middlewares:
+
+    # Whitelist NetBird — restreint les services privés aux peers du mesh
+    netbird-only:
+      ipAllowList:
+        sourceRange:
+          - "100.64.0.0/10"
+          - "127.0.0.1/32"
+
+    # Headers de sécurité HTTP — appliqué sur TOUS les routers
+    security-headers:
+      headers:
+        browserXssFilter: true
+        contentTypeNosniff: true
+        frameDeny: true
+        stsIncludeSubdomains: true
+        stsSeconds: 31536000
+        stsPreload: true
+        customResponseHeaders:
+          X-Robots-Tag: "noindex,nofollow"
+          Permissions-Policy: "camera=(), microphone=(), geolocation=()"
+
+    # Rate limiting — services publics uniquement (pas derrière VPN)
+    rate-limit-public:
+      rateLimit:
+        average: 50
+        burst: 100
+        period: 1m
+
+  # ── Routers ────────────────────────────────────────────────────────────────
+
+  routers:
+
+    # ── Services publics (security-headers + rate-limit-public) ─────────────
+
+    pi-pdf:
+      rule: "Host(`{{ bentopdf_subdomain }}.{{ vault_base_domain }}`)"
+      entrypoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - security-headers
+        - rate-limit-public
+      service: pi-pdf
+      priority: 10
+
+    pi-portfolio:
+      rule: "Host(`{{ portfolio_subdomain }}.{{ vault_base_domain }}`)"
+      entrypoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - security-headers
+        - rate-limit-public
+      service: pi-portfolio
+      priority: 10
+
+    # ── Services privés (security-headers + netbird-only) ───────────────────
+
+    pi-seafile:
+      rule: "Host(`{{ seafile_subdomain }}.{{ vault_base_domain }}`)"
+      entrypoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - security-headers
+        - netbird-only
+      service: pi-seafile
+      priority: 10
+
+    pi-vaultwarden:
+      rule: "Host(`{{ vaultwarden_subdomain }}.{{ vault_base_domain }}`)"
+      entrypoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - security-headers
+        - netbird-only
+      service: pi-vaultwarden
+      priority: 10
+
+    pi-adguard:
+      rule: "Host(`{{ adguard_subdomain }}.{{ vault_base_domain }}`)"
+      entrypoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - security-headers
+        - netbird-only
+      service: pi-adguard
+      priority: 10
+
+    pi-immich:
+      rule: "Host(`{{ immich_subdomain }}.{{ vault_base_domain }}`)"
+      entrypoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - security-headers
+        - netbird-only
+      service: pi-immich
+      priority: 10
+
+    pi-bientot:
+      rule: "Host(`{{ bientot_subdomain }}.{{ vault_base_domain }}`)"
+      entrypoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - security-headers
+        - netbird-only
+      service: pi-bientot
+      priority: 10
+
+  # ── Services (backends sur le Pi via tunnel NetBird) ───────────────────────
+
+  services:
+
+    pi-pdf:
+      loadBalancer:
+        servers:
+          - url: "http://{{ vault_pi_netbird_ip }}:{{ bentopdf_port }}"
+        passHostHeader: true
+
+    pi-portfolio:
+      loadBalancer:
+        servers:
+          - url: "http://{{ vault_pi_netbird_ip }}:{{ portfolio_port }}"
+        passHostHeader: true
+
+    pi-seafile:
+      loadBalancer:
+        servers:
+          - url: "http://{{ vault_pi_netbird_ip }}:{{ seafile_port }}"
+        passHostHeader: true
+
+    pi-vaultwarden:
+      loadBalancer:
+        servers:
+          - url: "http://{{ vault_pi_netbird_ip }}:{{ vaultwarden_port }}"
+        passHostHeader: true
+
+    pi-adguard:
+      loadBalancer:
+        servers:
+          - url: "http://{{ vault_pi_netbird_ip }}:{{ adguard_ui_port }}"
+        passHostHeader: true
+
+    pi-immich:
+      loadBalancer:
+        servers:
+          - url: "http://{{ vault_pi_netbird_ip }}:{{ immich_port }}"
+        passHostHeader: true
+
+    pi-bientot:
+      loadBalancer:
+        servers:
+          - url: "http://{{ vault_pi_netbird_ip }}:{{ bientot_port }}"
+        passHostHeader: true
+
+{% endif %}

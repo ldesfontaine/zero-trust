@@ -1,4 +1,0 @@
-# Déclaration backup modulaire — bientot
----
-backup_vps:
-  enabled: false  # métriques recréables, pas de backup

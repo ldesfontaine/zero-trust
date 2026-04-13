@@ -1,9 +1,0 @@
----
-# ============================================================================
-# Veille Sécu — Variables par défaut
-# ============================================================================
-
-veille_secu_repo: "https://github.com/ldesfontaine/Vielle-Technologique.git"
-veille_secu_version: "main"
-veille_secu_dir: "{{ pi_stack_dir }}/veille-secu"
-veille_secu_web_port: "8094"

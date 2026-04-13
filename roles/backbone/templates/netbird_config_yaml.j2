@@ -1,0 +1,40 @@
+# ============================================================================
+# NetBird Server — Configuration unifiée v0.65+
+# Managed by Ansible — ne pas modifier manuellement
+# ============================================================================
+server:
+  listenAddress: ":80"
+
+  # URL publique — distribuée à tous les peers
+  # Traefik termine le TLS sur 443
+  exposedAddress: "https://{{ netbird_fqdn }}:443"
+
+  stunPorts:
+    - 3478
+
+  metricsPort: 9090
+  healthcheckAddress: ":9000"
+  logLevel: "info"
+  logFile: "console"
+
+  # Secret pour l'authentification du relay interne
+  authSecret: "{{ vault_netbird_relay_secret }}"
+
+  dataDir: "/var/lib/netbird"
+
+  # Embedded IdP Dex — authentification locale sans Authentik
+  auth:
+    issuer: "https://{{ netbird_fqdn }}/oauth2"
+    localAuthDisabled: false
+    signKeyRefreshEnabled: true
+    dashboardRedirectURIs:
+      - "https://{{ netbird_fqdn }}/nb-auth"
+      - "https://{{ netbird_fqdn }}/nb-silent-auth"
+    cliRedirectURIs:
+      - "http://localhost:53000/"
+
+  # SQLite chiffré
+  store:
+    engine: "sqlite"
+    dsn: ""
+    encryptionKey: "{{ vault_netbird_datastore_key }}"

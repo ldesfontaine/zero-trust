@@ -1,0 +1,14 @@
+---
+- name: Reload Docker Stack VPS
+  shell: "cd {{ stack_dir }} && docker compose up -d --remove-orphans"
+
+- name: Restart CrowdSec
+  shell: "cd {{ stack_dir }} && docker compose restart crowdsec"
+
+- name: Restart Bouncer
+  systemd:
+    name: crowdsec-firewall-bouncer
+    state: restarted
+  when:
+    - crowdsec_lapi_ok | default(false)
+    - not ansible_check_mode or (_bouncer_present is defined and _bouncer_present.rc == 0)

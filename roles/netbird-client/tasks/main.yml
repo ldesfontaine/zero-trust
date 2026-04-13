@@ -1,19 +1,21 @@
 # ============================================================================
-# NetBird Client — Installation sur l'hote (VPS + Pi) (L3c)
+# NetBird Client — Installation + resolve (VPS + Pi)
 #
-# Le client tourne sur l'hote pour avoir acces direct aux interfaces
-# reseau kernel (WireGuard).
+# Le client tourne sur l'hôte pour avoir accès direct aux interfaces
+# réseau kernel (WireGuard).
 #
-# Prerequis (VPS) : les roles traefik (L3a) et netbird-server (L3b) ont
-# deploye le serveur NetBird. Le dashboard est accessible pour creer les
-# setup keys.
+# Prérequis (VPS) : le rôle backbone a déployé le serveur NetBird.
+# Le dashboard est accessible pour créer les setup keys.
 #
-# Apres deploiement, enrollment manuel :
+# Après déploiement, enrollment manuel :
 #   sudo netbird up --setup-key <SETUP_KEY> \
-#     --management-url https://mesh.ldesfontaine.com
-#   netbird status → noter l'IP WireGuard attribuee
+#     --management-url https://{{ netbird_fqdn }}
+#   netbird status → noter l'IP WireGuard attribuée
 # ============================================================================
 ---
+
+# -- Resolve : calculer netbird_bind_ip et netbird_mesh_ready ----------------
+- import_tasks: resolve.yml
 
 - name: Creer le dossier de logs NetBird
   file:

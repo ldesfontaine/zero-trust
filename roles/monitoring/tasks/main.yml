@@ -1,0 +1,62 @@
+# ============================================================================
+# Monitoring — Health checks + maintenance images Docker + Trivy
+#
+# Fusionne les anciens rôles alerting et image-maintenance.
+# Déployé sur VPS ET Pi.
+# Changements :
+#   - curl Ntfy : Authorization Bearer partout
+#   - Trivy : --format json + jq
+#   - Seuil disk VPS : 80%
+# ============================================================================
+---
+
+# --- Health checks ---
+- name: Déployer le script de health-check
+  template:
+    src: health-check.sh.j2
+    dest: /usr/local/bin/health-check.sh
+    owner: root
+    mode: '0750'
+
+- name: Cron health-check
+  cron:
+    name: "alerting-health-check"
+    minute: "*/{{ alerting_check_interval_min }}"
+    job: "/usr/local/bin/health-check.sh 2>&1 | logger -t health-check"
+
+# --- Image maintenance ---
+- name: Installer Trivy (scanner de vulnérabilités)
+  shell: |
+    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+  args:
+    creates: /usr/local/bin/trivy
+
+- name: Déployer le script de maintenance des images Docker
+  template:
+    src: docker-image-maintenance.sh.j2
+    dest: /opt/docker-image-maintenance.sh
+    owner: root
+    group: root
+    mode: '0750'
+
+- name: Cron hebdomadaire — maintenance des images Docker (dimanche 4h)
+  cron:
+    name: "docker-image-maintenance"
+    minute: "0"
+    hour: "4"
+    weekday: "0"
+    job: "/opt/docker-image-maintenance.sh >> /var/log/docker-image-maintenance.log 2>&1"
+    user: root
+
+- name: Logrotate pour le log de maintenance
+  copy:
+    content: |
+      /var/log/docker-image-maintenance.log {
+        weekly
+        rotate 4
+        compress
+        missingok
+        notifempty
+      }
+    dest: /etc/logrotate.d/docker-image-maintenance
+    mode: '0644'

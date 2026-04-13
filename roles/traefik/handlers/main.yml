@@ -1,3 +1,0 @@
----
-- name: Reload Backbone Stack
-  shell: "cd {{ backbone_dir }} && docker compose up -d --remove-orphans"

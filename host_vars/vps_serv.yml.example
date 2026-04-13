@@ -16,6 +16,12 @@ stack_dir: "/opt/sentinel"           # Stack L4 (CrowdSec, Ntfy, node-exporter)
 # --- CrowdSec ---
 vault_crowdsec_lapi_key: "CHANGE_ME"           # openssl rand -hex 16
 
+# --- Sécurité ---
+vault_admin_public_ip: "CHANGE_ME"             # IP publique admin (whitelist CrowdSec)
+
+# --- Ntfy ---
+vault_ntfy_auth_token: "CHANGE_ME"             # Token Bearer pour les notifications
+
 # --- NetBird Server ---
 vault_netbird_datastore_key: "CHANGE_ME"       # openssl rand -base64 32
 vault_netbird_relay_secret: "CHANGE_ME"        # openssl rand -base64 32

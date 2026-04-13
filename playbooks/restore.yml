@@ -148,7 +148,7 @@
             fail_msg: "Immich est trop volumineux pour le backup VPS. Utiliser -e restore_source=usb"
 
         - name: "Stopper Immich"
-          shell: "cd {{ pi_stack_dir }} && docker compose stop immich-server immich-machine-learning immich-redis immich-db"
+          shell: "cd {{ pi_stack_dir }} && docker compose stop immich-server immich-redis immich-db"
 
         - name: Restaurer les données Immich depuis USB
           shell: |
@@ -156,7 +156,7 @@
             cp -a {{ backup_usb_mount }}/stack/immich/db/* {{ pi_stack_dir }}/immich/db/
 
         - name: "Relancer Immich"
-          shell: "cd {{ pi_stack_dir }} && docker compose up -d immich-db immich-redis immich-server immich-machine-learning"
+          shell: "cd {{ pi_stack_dir }} && docker compose up -d immich-db immich-redis immich-server"
 
     # ── Nettoyage et notification ──────────────────────────────────────────
 
@@ -172,7 +172,8 @@
 
     - name: Notifier la fin de la restauration
       shell: >
-        curl -sf -H "Title: Restauration terminee"
+        curl -sf -H "Authorization: Bearer {{ vault_ntfy_auth_token }}"
+        -H "Title: Restauration terminee"
         -H "Tags: white_check_mark"
         -d "Restauration depuis {{ restore_source }} terminee sur {{ inventory_hostname }}"
         "{{ ntfy_url }}"

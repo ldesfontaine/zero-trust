@@ -1,0 +1,8 @@
+# ============================================================================
+# Raccourci — Tout d'un coup (après enrollment NetBird)
+# Usage : ansible-playbook -i inventory.ini playbooks/site.yml --ask-vault-pass
+# ============================================================================
+---
+- import_playbook: infrastructure.yml
+- import_playbook: services.yml
+- import_playbook: mesh-config.yml

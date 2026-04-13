@@ -1,0 +1,57 @@
+# ============================================================================
+# Common — Mise à jour, outils de base, unattended-upgrades
+# Partagé entre VPS et Pi. Ne contient RIEN de spécifique à une machine.
+# ============================================================================
+
+- name: Mettre à jour le cache apt
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Mettre à jour tous les paquets
+  apt:
+    upgrade: safe
+  environment:
+    NEEDRESTART_MODE: "a"
+
+# Si openssh-server a été mis à jour, sshd a redémarré
+# et le socket ControlMaster Ansible est périmé.
+- name: Réinitialiser la connexion SSH après apt upgrade
+  meta: reset_connection
+
+- name: Installer les outils de base
+  apt:
+    name:
+      - curl
+      - jq
+      - python3-pip
+      - git
+      - gnupg
+      - unattended-upgrades
+      - apt-listchanges
+    state: present
+
+- name: Activer les mises à jour automatiques
+  copy:
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::AutocleanInterval "7";
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: '0644'
+
+- name: Configurer les sources des mises à jour automatiques
+  copy:
+    content: |
+      Unattended-Upgrade::Allowed-Origins {
+        "${distro_id}:${distro_codename}";
+        "${distro_id}:${distro_codename}-security";
+        "${distro_id}ESMApps:${distro_codename}-apps-security";
+        "${distro_id}ESM:${distro_codename}-infra-security";
+        "Docker:${distro_codename}";
+      };
+      Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+      Unattended-Upgrade::Automatic-Reboot "false";
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    mode: '0644'

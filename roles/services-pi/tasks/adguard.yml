@@ -1,0 +1,53 @@
+# AdGuard Home — config initiale, sync password, DNS conditionnel
+# adguard-exporter SUPPRIMÉ (remplacé par module natif Bientôt)
+---
+- name: Création des dossiers AdGuard
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ vault_pi_ssh_user }}"
+    group: "{{ vault_pi_ssh_user }}"
+    mode: '0755'
+  loop:
+    - "{{ pi_stack_dir }}/adguard"
+    - "{{ pi_stack_dir }}/adguard/work"
+    - "{{ pi_stack_dir }}/adguard/conf"
+
+- name: Vérifier si AdGuard est déjà configuré
+  stat:
+    path: "{{ pi_stack_dir }}/adguard/conf/AdGuardHome.yaml"
+  register: adguard_conf_file
+
+- name: Déployer la config initiale AdGuard (premier run uniquement)
+  template:
+    src: adguardhome_yaml.j2
+    dest: "{{ pi_stack_dir }}/adguard/conf/AdGuardHome.yaml"
+    owner: "{{ vault_pi_ssh_user }}"
+    mode: '0644'
+  when: not adguard_conf_file.stat.exists
+
+- name: Synchroniser le hash du mot de passe AdGuard
+  replace:
+    path: "{{ pi_stack_dir }}/adguard/conf/AdGuardHome.yaml"
+    regexp: '(    password: ).*'
+    replace: '\1"{{ vault_adguard_admin_password_hash }}"'
+  when: adguard_conf_file.stat.exists
+  notify: Restart AdGuard
+
+- name: Ajouter le DNS conditionnel .home vers la Livebox
+  lineinfile:
+    path: "{{ pi_stack_dir }}/adguard/conf/AdGuardHome.yaml"
+    insertafter: '^\s+- https://dns\.google/dns-query'
+    line: '    - "[/home/]{{ livebox_ip }}"'
+    state: present
+  when: adguard_conf_file.stat.exists
+  notify: Restart AdGuard
+
+- name: Pull de l'image AdGuard
+  shell: "cd {{ pi_stack_dir }} && docker compose pull adguard"
+  changed_when: false
+
+- name: Lancement de AdGuard
+  shell: "cd {{ pi_stack_dir }} && docker compose up -d adguard"
+  register: _adguard_up
+  changed_when: "'Started' in _adguard_up.stderr or 'Created' in _adguard_up.stderr"

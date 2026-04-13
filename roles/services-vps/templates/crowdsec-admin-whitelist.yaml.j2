@@ -1,0 +1,13 @@
+# ============================================================================
+# CrowdSec — Whitelist admin IP publique
+# Managed by Ansible — ne pas modifier manuellement
+#
+# Évite l'auto-ban de l'IP admin lors des tests ou runs Ansible.
+# Voir docs/08-DISASTER-RECOVERY.md scénario E si banni.
+# ============================================================================
+name: admin-whitelist
+description: "Whitelist admin public IP"
+whitelist:
+  reason: "Admin public IP — never ban"
+  ip:
+    - "{{ vault_admin_public_ip }}"

@@ -1,0 +1,514 @@
+# ============================================================================
+# NetBird ACL — Policies Zero Trust
+#
+# Idempotent : groupes créés (POST) si absents, mis à jour (PUT) si présents.
+# Policies : créées si absentes, skip si présentes.
+# Guard : assert peers admins présents AVANT suppression de Default.
+# ============================================================================
+---
+
+- name: "INFO — ACL NetBird ignorés (enrollment requis)"
+  debug:
+    msg: "vault_pi_netbird_ip non renseigné — ACL NetBird ignorés. Relancer après enrollment."
+  when: vault_pi_netbird_ip in ["REMPLACER_APRES_ENROLEMENT_NETBIRD", "CHANGE_ME"]
+
+- when:
+    - vault_pi_netbird_ip not in ["REMPLACER_APRES_ENROLEMENT_NETBIRD", "CHANGE_ME"]
+    - not ansible_check_mode
+  block:
+
+    # ── Peers ──────────────────────────────────────────────────────────────
+
+    - name: Récupérer la liste des peers NetBird
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/peers"
+        method: GET
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+          Accept: "application/json"
+        status_code: 200
+        validate_certs: true
+      register: nb_peers_resp
+      delegate_to: localhost
+      become: false
+      changed_when: false
+
+    - name: Extraire peer ID VPS
+      set_fact:
+        nb_vps_peer_id: "{{ nb_peers_resp.json | selectattr('ip', 'equalto', vault_vps_netbird_ip) | map(attribute='id') | list | first }}"
+
+    - name: Extraire peer ID Pi
+      set_fact:
+        nb_pi_peer_id: "{{ nb_peers_resp.json | selectattr('ip', 'equalto', vault_pi_netbird_ip) | map(attribute='id') | list | first }}"
+
+    - name: Extraire IDs des peers admins (tous sauf VPS et Pi)
+      set_fact:
+        nb_admin_peer_ids: "{{ nb_peers_resp.json | rejectattr('ip', 'equalto', vault_vps_netbird_ip) | rejectattr('ip', 'equalto', vault_pi_netbird_ip) | map(attribute='id') | list }}"
+
+    - name: Vérifier qu'il existe au moins un peer admin
+      assert:
+        that: nb_admin_peer_ids | length > 0
+        fail_msg: >
+          ERREUR : Aucun peer admin trouvé dans NetBird (tous les peers = VPS + Pi).
+          Connectez au moins un client NetBird (laptop/phone) avant de configurer
+          les ACLs. Sans peer admin, la suppression de la policy Default vous
+          coupera tout accès au mesh.
+
+    # ── Groupes ────────────────────────────────────────────────────────────
+
+    - name: Récupérer les groupes NetBird existants
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/groups"
+        method: GET
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+          Accept: "application/json"
+        status_code: 200
+        validate_certs: true
+      register: nb_groups_resp
+      delegate_to: localhost
+      become: false
+      changed_when: false
+
+    # --- Groupe sentinelle (VPS) ---
+    - name: Créer le groupe sentinelle
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/groups"
+        method: POST
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "sentinelle"
+          peers:
+            - "{{ nb_vps_peer_id }}"
+        status_code: [200, 201]
+        validate_certs: true
+      delegate_to: localhost
+      become: false
+      when: nb_groups_resp.json | selectattr('name', 'equalto', 'sentinelle') | list | length == 0
+      changed_when: true
+
+    - name: Mettre à jour le groupe sentinelle
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/groups/{{ (nb_groups_resp.json | selectattr('name', 'equalto', 'sentinelle') | list | first).id }}"
+        method: PUT
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "sentinelle"
+          peers:
+            - "{{ nb_vps_peer_id }}"
+        status_code: 200
+        validate_certs: true
+      delegate_to: localhost
+      become: false
+      when: nb_groups_resp.json | selectattr('name', 'equalto', 'sentinelle') | list | length > 0
+      changed_when: false
+
+    # --- Groupe cerveau (Pi) ---
+    - name: Créer le groupe cerveau
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/groups"
+        method: POST
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "cerveau"
+          peers:
+            - "{{ nb_pi_peer_id }}"
+        status_code: [200, 201]
+        validate_certs: true
+      delegate_to: localhost
+      become: false
+      when: nb_groups_resp.json | selectattr('name', 'equalto', 'cerveau') | list | length == 0
+      changed_when: true
+
+    - name: Mettre à jour le groupe cerveau
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/groups/{{ (nb_groups_resp.json | selectattr('name', 'equalto', 'cerveau') | list | first).id }}"
+        method: PUT
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "cerveau"
+          peers:
+            - "{{ nb_pi_peer_id }}"
+        status_code: 200
+        validate_certs: true
+      delegate_to: localhost
+      become: false
+      when: nb_groups_resp.json | selectattr('name', 'equalto', 'cerveau') | list | length > 0
+      changed_when: false
+
+    # --- Groupe infra (sentinelle + futures machines) ---
+    - name: Créer le groupe infra
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/groups"
+        method: POST
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "infra"
+          peers:
+            - "{{ nb_vps_peer_id }}"
+        status_code: [200, 201]
+        validate_certs: true
+      delegate_to: localhost
+      become: false
+      when: nb_groups_resp.json | selectattr('name', 'equalto', 'infra') | list | length == 0
+      changed_when: true
+
+    - name: Mettre à jour le groupe infra
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/groups/{{ (nb_groups_resp.json | selectattr('name', 'equalto', 'infra') | list | first).id }}"
+        method: PUT
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "infra"
+          peers:
+            - "{{ nb_vps_peer_id }}"
+        status_code: 200
+        validate_certs: true
+      delegate_to: localhost
+      become: false
+      when: nb_groups_resp.json | selectattr('name', 'equalto', 'infra') | list | length > 0
+      changed_when: false
+
+    # --- Groupe admins (tous les autres peers) ---
+    - name: Créer le groupe admins
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/groups"
+        method: POST
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "admins"
+          peers: "{{ nb_admin_peer_ids }}"
+        status_code: [200, 201]
+        validate_certs: true
+      delegate_to: localhost
+      become: false
+      when: nb_groups_resp.json | selectattr('name', 'equalto', 'admins') | list | length == 0
+      changed_when: true
+
+    - name: Mettre à jour le groupe admins (sync nouveaux peers)
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/groups/{{ (nb_groups_resp.json | selectattr('name', 'equalto', 'admins') | list | first).id }}"
+        method: PUT
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "admins"
+          peers: "{{ nb_admin_peer_ids }}"
+        status_code: 200
+        validate_certs: true
+      delegate_to: localhost
+      become: false
+      when: nb_groups_resp.json | selectattr('name', 'equalto', 'admins') | list | length > 0
+      changed_when: false
+
+    # ── Re-fetch groupes pour IDs à jour ───────────────────────────────────
+
+    - name: Re-fetch groupes NetBird (IDs à jour après création)
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/groups"
+        method: GET
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+          Accept: "application/json"
+        status_code: 200
+        validate_certs: true
+      register: nb_groups_final
+      delegate_to: localhost
+      become: false
+      changed_when: false
+
+    - name: Extraire les IDs des groupes
+      set_fact:
+        nb_grp_sentinelle: "{{ nb_groups_final.json | selectattr('name', 'equalto', 'sentinelle') | map(attribute='id') | first }}"
+        nb_grp_cerveau:    "{{ nb_groups_final.json | selectattr('name', 'equalto', 'cerveau')    | map(attribute='id') | first }}"
+        nb_grp_infra:      "{{ nb_groups_final.json | selectattr('name', 'equalto', 'infra')      | map(attribute='id') | first }}"
+        nb_grp_admins:     "{{ nb_groups_final.json | selectattr('name', 'equalto', 'admins')     | map(attribute='id') | first }}"
+
+    # ── Policies ───────────────────────────────────────────────────────────
+
+    - name: Récupérer les policies NetBird existantes
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/policies"
+        method: GET
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+          Accept: "application/json"
+        status_code: 200
+        validate_certs: true
+      register: nb_policies_resp
+      delegate_to: localhost
+      become: false
+      changed_when: false
+
+    # Suppression de la policy Default (All→All) — deny-by-default
+    - name: Supprimer la policy Default (All→All)
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/policies/{{ item.id }}"
+        method: DELETE
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+        status_code: [200, 204]
+        validate_certs: true
+      loop: "{{ nb_policies_resp.json | selectattr('name', 'equalto', 'Default') | list }}"
+      delegate_to: localhost
+      become: false
+      when: nb_policies_resp.json | selectattr('name', 'equalto', 'Default') | list | length > 0
+      changed_when: true
+
+    # Supprimer l'ancienne policy monitoring (9100/6060 via mesh — remplacée par localhost)
+    - name: Supprimer l'ancienne policy cerveau-sentinelle-monitoring
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/policies/{{ item.id }}"
+        method: DELETE
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+        status_code: [200, 204]
+        validate_certs: true
+      loop: "{{ nb_policies_resp.json | selectattr('name', 'equalto', 'cerveau-sentinelle-monitoring') | list }}"
+      delegate_to: localhost
+      become: false
+      when: nb_policies_resp.json | selectattr('name', 'equalto', 'cerveau-sentinelle-monitoring') | list | length > 0
+      changed_when: true
+
+    # Policy 1 : admins ↔ sentinelle (accès total)
+    - name: Créer policy admins-sentinelle
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/policies"
+        method: POST
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "admins-sentinelle"
+          description: "Admins <-> VPS : acces total (SSH, management)"
+          enabled: true
+          rules:
+            - name: "admins-sentinelle-all"
+              description: ""
+              enabled: true
+              action: "accept"
+              bidirectional: true
+              protocol: "all"
+              sources:
+                - "{{ nb_grp_admins }}"
+              destinations:
+                - "{{ nb_grp_sentinelle }}"
+        status_code: [200, 201]
+        validate_certs: true
+      delegate_to: localhost
+      become: false
+      when: nb_policies_resp.json | selectattr('name', 'equalto', 'admins-sentinelle') | list | length == 0
+      changed_when: true
+
+    # Policy 2 : admins ↔ cerveau (accès total)
+    - name: Créer policy admins-cerveau
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/policies"
+        method: POST
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "admins-cerveau"
+          description: "Admins <-> Pi : acces total (SSH, services, AdGuard)"
+          enabled: true
+          rules:
+            - name: "admins-cerveau-all"
+              description: ""
+              enabled: true
+              action: "accept"
+              bidirectional: true
+              protocol: "all"
+              sources:
+                - "{{ nb_grp_admins }}"
+              destinations:
+                - "{{ nb_grp_cerveau }}"
+        status_code: [200, 201]
+        validate_certs: true
+      delegate_to: localhost
+      become: false
+      when: nb_policies_resp.json | selectattr('name', 'equalto', 'admins-cerveau') | list | length == 0
+      changed_when: true
+
+    # Policy 3 : infra → cerveau (TCP backends Traefik + port 3002)
+    - name: Créer policy infra-cerveau-web
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/policies"
+        method: POST
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "infra-cerveau-web"
+          description: "Infra -> Pi : TCP web backends Traefik (pas de SSH)"
+          enabled: true
+          rules:
+            - name: "web-backends"
+              description: "Traefik proxy vers services Pi"
+              enabled: true
+              action: "accept"
+              bidirectional: false
+              protocol: "tcp"
+              ports:
+                - "{{ bentopdf_port }}"
+                - "{{ portfolio_port }}"
+                - "{{ seafile_port }}"
+                - "{{ vaultwarden_port }}"
+                - "{{ veille_secu_web_port }}"
+                - "{{ immich_port }}"
+                - "{{ adguard_ui_port }}"
+                - "{{ bientot_port }}"
+                - "3002"
+              sources:
+                - "{{ nb_grp_infra }}"
+              destinations:
+                - "{{ nb_grp_cerveau }}"
+        status_code: [200, 201]
+        validate_certs: true
+      delegate_to: localhost
+      become: false
+      when: nb_policies_resp.json | selectattr('name', 'equalto', 'infra-cerveau-web') | list | length == 0
+      changed_when: true
+
+    - name: Mettre à jour policy infra-cerveau-web
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/policies/{{ (nb_policies_resp.json | selectattr('name', 'equalto', 'infra-cerveau-web') | list | first).id }}"
+        method: PUT
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "infra-cerveau-web"
+          description: "Infra -> Pi : TCP web backends Traefik (pas de SSH)"
+          enabled: true
+          rules:
+            - name: "web-backends"
+              description: "Traefik proxy vers services Pi"
+              enabled: true
+              action: "accept"
+              bidirectional: false
+              protocol: "tcp"
+              ports:
+                - "{{ bentopdf_port }}"
+                - "{{ portfolio_port }}"
+                - "{{ seafile_port }}"
+                - "{{ vaultwarden_port }}"
+                - "{{ veille_secu_web_port }}"
+                - "{{ immich_port }}"
+                - "{{ adguard_ui_port }}"
+                - "{{ bientot_port }}"
+                - "3002"
+              sources:
+                - "{{ nb_grp_infra }}"
+              destinations:
+                - "{{ nb_grp_cerveau }}"
+        status_code: 200
+        validate_certs: true
+      delegate_to: localhost
+      become: false
+      when: nb_policies_resp.json | selectattr('name', 'equalto', 'infra-cerveau-web') | list | length > 0
+      changed_when: false
+
+    # Policy 4 : cerveau → sentinelle (TCP 443 + SSH — push Ntfy, etc.)
+    - name: Créer policy cerveau-sentinelle-push
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/policies"
+        method: POST
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "cerveau-sentinelle-push"
+          description: "Pi -> VPS : TCP 443 (Ntfy push, HTTPS) + SSH"
+          enabled: true
+          rules:
+            - name: "push-and-ssh"
+              description: "Pi vers VPS pour Ntfy push et SSH"
+              enabled: true
+              action: "accept"
+              bidirectional: false
+              protocol: "tcp"
+              ports:
+                - "443"
+                - "{{ vault_ssh_port }}"
+              sources:
+                - "{{ nb_grp_cerveau }}"
+              destinations:
+                - "{{ nb_grp_sentinelle }}"
+        status_code: [200, 201]
+        validate_certs: true
+      delegate_to: localhost
+      become: false
+      when: nb_policies_resp.json | selectattr('name', 'equalto', 'cerveau-sentinelle-push') | list | length == 0
+      changed_when: true
+
+    # Policy 5 : ICMP bidirectionnel infra ↔ cerveau
+    - name: Créer policy infra-icmp
+      uri:
+        url: "https://{{ netbird_fqdn }}/api/policies"
+        method: POST
+        headers:
+          Authorization: "Token {{ vault_netbird_api_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "infra-icmp"
+          description: "ICMP bidirectionnel infra <-> Pi (ping, health checks)"
+          enabled: true
+          rules:
+            - name: "icmp-infra"
+              description: ""
+              enabled: true
+              action: "accept"
+              bidirectional: true
+              protocol: "icmp"
+              sources:
+                - "{{ nb_grp_infra }}"
+              destinations:
+                - "{{ nb_grp_cerveau }}"
+        status_code: [200, 201]
+        validate_certs: true
+      delegate_to: localhost
+      become: false
+      when: nb_policies_resp.json | selectattr('name', 'equalto', 'infra-icmp') | list | length == 0
+      changed_when: true
+
+    - name: "INFO — ACL NetBird Zero Trust actifs"
+      debug:
+        msg: >
+          Policies NetBird configurées :
+          - admins ↔ sentinelle  : accès total
+          - admins ↔ cerveau     : accès total
+          - infra  → cerveau    : TCP backends Traefik + 3002
+          - cerveau → sentinelle : TCP 443, SSH
+          - infra  ↔ cerveau    : ICMP
+          Policy Default (All→All) supprimée. Deny-by-default actif.
+          Ancienne policy monitoring (9100/6060) supprimée (bind localhost).

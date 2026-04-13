@@ -1,0 +1,37 @@
+# Infrastructure partagée stack Pi — deploie le docker-compose.yml + .env
+# Tagué [always] dans main.yml : s'exécute quel que soit le tag service demandé.
+---
+- name: Création du dossier racine stack Pi
+  file:
+    path: "{{ pi_stack_dir }}"
+    state: directory
+    owner: "{{ vault_pi_ssh_user }}"
+    group: "{{ vault_pi_ssh_user }}"
+    mode: '0755'
+
+- name: Déployer le fichier .env (secrets vault — mode 0600)
+  template:
+    src: brain.env.j2
+    dest: "{{ pi_stack_dir }}/.env"
+    owner: "{{ vault_pi_ssh_user }}"
+    mode: '0600'
+  notify: Reload Docker Stack Pi
+
+- name: Déploiement du docker-compose Pi
+  template:
+    src: docker-compose_pi_yml.j2
+    dest: "{{ pi_stack_dir }}/docker-compose.yml"
+    owner: "{{ vault_pi_ssh_user }}"
+    mode: '0644'
+  notify: Reload Docker Stack Pi
+
+- name: Attendre l'interface NetBird (IP {{ host_netbird_ip }})
+  shell: ip addr show | grep -q "{{ host_netbird_ip }}"
+  register: nb_iface_check
+  retries: 30
+  delay: 2
+  until: nb_iface_check.rc == 0
+  changed_when: false
+  when:
+    - host_netbird_ip not in ['CHANGE_ME', 'REMPLACER_APRES_ENROLEMENT_NETBIRD']
+    - not (netbird_mesh_ready | default(false) | bool)

@@ -56,4 +56,7 @@ jobs:
           echo "dummy-vault-password" > /tmp/vault_pass
 
       - name: Vérifier la syntaxe des playbooks
-        run: ansible-playbook -i inventory.ini setup.yml --syntax-check --vault-password-file /tmp/vault_pass
+        run: |
+          ansible-playbook -i inventory.ini playbooks/infrastructure.yml --syntax-check --vault-password-file /tmp/vault_pass
+          ansible-playbook -i inventory.ini playbooks/services.yml --syntax-check --vault-password-file /tmp/vault_pass
+          ansible-playbook -i inventory.ini playbooks/mesh-config.yml --syntax-check --vault-password-file /tmp/vault_pass

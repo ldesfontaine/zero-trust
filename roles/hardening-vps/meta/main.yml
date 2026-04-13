@@ -1,4 +1,0 @@
----
-dependencies: []
-# system-vps est inclus explicitement dans infrastructure.yml AVANT hardening-vps
-# Ne pas le remettre ici : ça provoque une double exécution (2x SSH, drop connexion)

@@ -6,19 +6,25 @@
 # --- Versions Docker images ---
 traefik_version: "v2.11"
 crowdsec_version: "v1.6.8"
-netbird_server_version: "latest"
-netbird_dashboard_version: "latest"
+netbird_server_version: "0.36.5"
+netbird_dashboard_version: "2.9.0"
 node_exporter_version: "v1.9.0"
 mariadb_version: "11"
 seafile_version: "11.0-latest"
 memcached_version: "1.6"
 vaultwarden_version: "1.32.1"
 adguard_version: "v0.107.55"
-adguard_exporter_version: "latest"
 bentopdf_image: "ghcr.io/alam00000/bentopdf"
-bentopdf_version: "latest"
-nginx_version: "alpine"
+bentopdf_version: "sha-latest"  # TODO: épingler sur un SHA ou tag stable
 ntfy_version: "v2.11.0"
+portfolio_image: "ghcr.io/ldesfontaine/termfolio"
+portfolio_version: "latest"     # TODO: épingler sur un tag stable
+bientot_server_image: "ghcr.io/ldesfontaine/bientot-server"
+bientot_server_version: "latest"  # TODO: épingler sur un tag stable
+bientot_agent_image: "ghcr.io/ldesfontaine/bientot-agent"
+bientot_agent_version: "latest"   # TODO: épingler sur un tag stable
+veille_secu_image: "ghcr.io/ldesfontaine/veille-secu"
+veille_secu_version: "latest"     # TODO: épingler sur un tag stable
 immich_version: "v1.134.0"
 immich_redis_version: "7-alpine"
 immich_db_image: "ghcr.io/immich-app/postgres"
@@ -66,6 +72,14 @@ vault_ssh_port: 2222
 vault_pi_ssh_user: "lucas"
 
 # --- Ports applicatifs (Pi via VPS) ---
+# Source unique pour nftables, Docker compose, Traefik et ACLs NetBird
+bentopdf_port: "8090"
+portfolio_port: "8091"
+seafile_port: "8092"
+vaultwarden_port: "8093"
+veille_secu_web_port: "8094"
+immich_port: "8096"
+adguard_ui_port: "3000"
 bientot_port: "3001"
 
 # --- NetBird IPs WireGuard (aliases cross-host) ---
@@ -74,6 +88,9 @@ bientot_port: "3001"
 # traefik_dynamic, netbird-acl) de referencer l'IP d'une autre machine.
 vault_vps_netbird_ip: "{{ hostvars['vps_serv'].host_netbird_ip | default('CHANGE_ME') }}"
 vault_pi_netbird_ip: "{{ hostvars['pi_serv'].host_netbird_ip | default('CHANGE_ME') }}"
+
+# --- Réseau local ---
+livebox_ip: "192.168.1.1"                      # IP du routeur/Livebox (split DNS .home)
 
 # --- IP publique VPS ---
 vault_vps_mgmt_ip: "CHANGE_ME"                 # IP publique de ton VPS

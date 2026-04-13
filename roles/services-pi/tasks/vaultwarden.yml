@@ -1,0 +1,18 @@
+# Vaultwarden — réseau brain_vault isolé
+---
+- name: Création du dossier Vaultwarden
+  file:
+    path: "{{ pi_stack_dir }}/vaultwarden"
+    state: directory
+    owner: "{{ vault_pi_ssh_user }}"
+    group: "{{ vault_pi_ssh_user }}"
+    mode: '0755'
+
+- name: Pull de l'image Vaultwarden
+  shell: "cd {{ pi_stack_dir }} && docker compose pull vaultwarden"
+  changed_when: false
+
+- name: Lancement de Vaultwarden
+  shell: "cd {{ pi_stack_dir }} && docker compose up -d vaultwarden"
+  register: _vaultwarden_up
+  changed_when: "'Started' in _vaultwarden_up.stderr or 'Created' in _vaultwarden_up.stderr"

@@ -1,0 +1,4 @@
+galaxy_info:
+  description: "Services VPS — CrowdSec + bouncer, Ntfy, node-exporter, bientot-agent"
+  min_ansible_version: "2.14"
+allow_duplicates: false

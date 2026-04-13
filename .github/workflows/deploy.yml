@@ -18,14 +18,15 @@ on:
       playbook:
         description: 'Playbook à exécuter'
         required: true
-        default: 'setup.yml'
+        default: 'playbooks/site.yml'
         type: choice
         options:
-          - setup.yml
+          - playbooks/site.yml
           - playbooks/bootstrap.yml
           - playbooks/infrastructure.yml
           - playbooks/services.yml
-          - playbooks/operations.yml
+          - playbooks/mesh-config.yml
+          - playbooks/restore.yml
       tags:
         description: 'Tags Ansible (vide = tout)'
         required: false

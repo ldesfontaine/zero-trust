@@ -1,7 +1,0 @@
----
-# system-pi est un prérequis mais géré par l'ordre des rôles dans le playbook.
-# Ne PAS le déclarer ici : double exécution → apt upgrade + reset_connection
-# tournent deux fois pour rien.
-dependencies: []
-
-allow_duplicates: false

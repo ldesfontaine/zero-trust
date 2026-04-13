@@ -1,0 +1,4 @@
+# Managed by Ansible — ne pas modifier manuellement
+# Détection du SSD USB de backup (par UUID LUKS)
+ACTION=="add", ENV{ID_FS_UUID}=="{{ backup_usb_luks_uuid }}", \
+  RUN+="/bin/bash -c 'curl -sf -H \"Authorization: Bearer {{ vault_ntfy_auth_token }}\" -H \"Title: SSD détecté\" -H \"Tags: electric_plug\" -d \"SSD de backup branché — en attente de déverrouillage LUKS\" {{ ntfy_server_url }}/{{ ntfy_backup_topic }} || true'"

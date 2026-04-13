@@ -1,0 +1,21 @@
+# ============================================================================
+# Phase 2 — Configuration mesh (ACLs + DNS)
+# Usage : ansible-playbook -i inventory.ini playbooks/mesh-config.yml --ask-vault-pass
+#
+# Prérequis : infrastructure.yml + enrollment NetBird + services.yml
+# Exécuté depuis le Pi (délègue les appels API à localhost).
+# ============================================================================
+---
+
+- name: "Configuration mesh (ACLs + DNS + AdGuard rewrites)"
+  hosts: lan
+  become: true
+  gather_facts: false
+  ignore_unreachable: true
+  pre_tasks:
+    - include_role: { name: connection-resolver }
+      tags: [always]
+    - include_role: { name: netbird-client, tasks_from: resolve.yml }
+      tags: [always]
+  roles:
+    - { role: mesh-config, tags: [mesh-config, acl, dns, adguard] }

@@ -1,0 +1,4 @@
+galaxy_info:
+  description: "Backup — snapshots ZFS, backup chiffré VPS, backup USB"
+  min_ansible_version: "2.14"
+allow_duplicates: false

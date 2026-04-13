@@ -1,0 +1,25 @@
+# ============================================================================
+# services-vps — CrowdSec + bouncer, Ntfy, node-exporter, bientot-agent
+#
+# Fusionne les anciens rôles stack-vps et crowdsec-bouncer.
+# Traefik et NetBird server sont dans la stack backbone (/opt/backbone/).
+# Cette stack rejoint le réseau sentinel_net (external) créé par le backbone.
+#
+# Usage :
+#   --tags services-vps   → redéploie toute la stack
+#   --tags crowdsec       → ne cible que CrowdSec + bouncer
+#   --tags ntfy           → ne cible que Ntfy
+# ============================================================================
+---
+
+# Infrastructure partagée (compose + acquis.yaml) — toujours exécutée
+- import_tasks: _compose.yml
+  tags: [always]
+
+# Services individuels — filtrés par tags
+- import_tasks: crowdsec.yml
+  tags: [crowdsec]
+- import_tasks: ntfy.yml
+  tags: [ntfy]
+- import_tasks: node-exporter.yml
+  tags: [node-exporter-vps]

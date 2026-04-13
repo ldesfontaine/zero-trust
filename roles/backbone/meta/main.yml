@@ -1,0 +1,4 @@
+galaxy_info:
+  description: "Backbone — Traefik reverse proxy + NetBird server"
+  min_ansible_version: "2.14"
+allow_duplicates: false

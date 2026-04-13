@@ -1,0 +1,30 @@
+# Bientôt server — image GHCR (plus de git clone + build)
+# Panel admin privé : monitoring + métriques + alerting
+---
+- name: Créer le répertoire bientot
+  file:
+    path: "{{ pi_stack_dir }}/bientot"
+    state: directory
+    owner: "{{ vault_pi_ssh_user }}"
+    group: "{{ vault_pi_ssh_user }}"
+    mode: '0755'
+
+- name: Pull de l'image Bientôt
+  shell: "cd {{ pi_stack_dir }} && docker compose pull bientot-server"
+  changed_when: false
+
+- name: Lancement de Bientôt
+  shell: "cd {{ pi_stack_dir }} && docker compose up -d bientot-server"
+  register: _bientot_up
+  changed_when: "'Started' in _bientot_up.stderr or 'Created' in _bientot_up.stderr"
+
+- name: Attendre que Bientôt soit opérationnel
+  uri:
+    url: "http://{{ netbird_bind_ip }}:{{ bientot_port }}"
+    status_code: [200, 301, 302]
+  register: _bientot_health
+  retries: 10
+  delay: 5
+  until: _bientot_health.status is defined and _bientot_health.status in [200, 301, 302]
+  failed_when: false
+  when: not ansible_check_mode

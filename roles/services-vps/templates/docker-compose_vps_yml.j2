@@ -1,0 +1,134 @@
+# ============================================================================
+# Docker Compose Stack VPS — Managed by Ansible
+#
+# Services applicatifs : CrowdSec, Ntfy, node-exporter, bientot-agent
+# Backbone (Traefik + NetBird) dans /opt/backbone/.
+# ============================================================================
+
+services:
+
+  # == SECURITE ================================================================
+
+  crowdsec:
+    image: crowdsecurity/crowdsec:{{ crowdsec_version }}
+    container_name: crowdsec
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - DAC_READ_SEARCH
+    environment:
+      COLLECTIONS: "crowdsecurity/linux crowdsecurity/traefik crowdsecurity/sshd"
+      BOUNCER_KEY_firewall: "${BOUNCER_KEY_firewall}"
+    volumes:
+      - ./crowdsec/config:/etc/crowdsec
+      - ./crowdsec/data:/var/lib/crowdsec/data
+      - /var/log:/var/log:ro
+      - /run/log/journal:/run/log/journal:ro
+      - /var/log/journal:/var/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
+      - ./acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - '127.0.0.1:8080:8080'
+      - '127.0.0.1:6060:6060'
+    networks:
+      - sentinel_net
+    healthcheck:
+      test: ["CMD", "cscli", "lapi", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # == NOTIFICATIONS ===========================================================
+
+  ntfy:
+    image: binwiederhier/ntfy:{{ ntfy_version }}
+    container_name: ntfy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    command:
+      - serve
+    environment:
+      - NTFY_BASE_URL=https://{{ ntfy_subdomain }}.{{ vault_base_domain }}
+      - NTFY_UPSTREAM_BASE_URL=https://ntfy.sh
+      - NTFY_BEHIND_PROXY=true
+      - NTFY_AUTH_DEFAULT_ACCESS=deny-all
+    env_file:
+      - .env
+    volumes:
+      - {{ stack_dir }}/ntfy/cache:/var/cache/ntfy
+      - {{ stack_dir }}/ntfy/etc:/etc/ntfy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ntfy.rule=Host(`{{ ntfy_subdomain }}.{{ vault_base_domain }}`)"
+      - "traefik.http.routers.ntfy.entrypoints=websecure"
+      - "traefik.http.routers.ntfy.tls=true"
+      - "traefik.http.routers.ntfy.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.ntfy.middlewares=security-headers@file"
+      - "traefik.http.services.ntfy.loadbalancer.server.port=80"
+    networks:
+      - sentinel_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --tries=1 http://localhost:80/v1/health -O - | grep -Eo '\"healthy\"\\s*:\\s*true' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # == MONITORING ==============================================================
+
+  node-exporter:
+    image: prom/node-exporter:{{ node_exporter_version }}
+    container_name: node-exporter
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pid: host
+    ports:
+      - '127.0.0.1:9100:9100'
+    volumes:
+      - /:/host:ro,rslave
+    command:
+      - '--path.rootfs=/host'
+    networks:
+      - sentinel_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9100/metrics 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # == BIENTOT AGENT ===========================================================
+  # Push-only : collecte les métriques locales et push vers le serveur Bientôt (Pi)
+
+  bientot-agent:
+    image: ghcr.io/ldesfontaine/bientot-agent:{{ bientot_agent_version }}
+    container_name: bientot-agent
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    env_file:
+      - .env
+    networks:
+      - sentinel_net
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/heartbeat || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  sentinel_net:
+    external: true

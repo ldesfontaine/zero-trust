@@ -1,6 +1,0 @@
----
-# stack-vps est un prérequis mais géré par l'ordre des rôles dans le playbook.
-# Ne PAS le déclarer ici : double exécution sinon.
-dependencies: []
-
-allow_duplicates: false

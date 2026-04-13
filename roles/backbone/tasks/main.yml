@@ -1,0 +1,141 @@
+# ============================================================================
+# Backbone — Traefik reverse proxy + NetBird server (L3)
+#
+# Fusionne les anciens rôles traefik (L3a) et netbird-server (L3b).
+# Déploie la stack complète dans /opt/backbone/ sur sentinel_net.
+# ============================================================================
+---
+
+# -- Réseau partagé sentinel_net (idempotent) --------------------------------
+- name: Vérifier si le réseau sentinel_net existe
+  shell: "docker network inspect sentinel_net"
+  register: sentinel_net_check
+  changed_when: false
+  failed_when: false
+
+- name: Créer le réseau Docker sentinel_net
+  shell: "docker network create --driver bridge sentinel_net"
+  when: sentinel_net_check.rc != 0
+
+# -- Arborescence backbone ---------------------------------------------------
+- name: Créer les dossiers backbone
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ vault_ssh_user }}"
+    group: "{{ vault_ssh_user }}"
+    mode: '0755'
+  loop:
+    - "{{ backbone_dir }}"
+    - "{{ backbone_dir }}/traefik"
+    - "{{ backbone_dir }}/traefik/dynamic"
+    - "{{ backbone_dir }}/netbird"
+    - "{{ backbone_dir }}/netbird/data"
+
+# -- Migration volumes (VPS existant uniquement) -----------------------------
+- name: Vérifier si l'ancien acme.json existe dans /opt/stack
+  stat:
+    path: "/opt/stack/traefik/acme.json"
+  register: old_acme_json
+
+- name: Sauvegarder acme.json depuis l'ancienne stack
+  copy:
+    src: "/opt/stack/traefik/acme.json"
+    dest: "{{ backbone_dir }}/traefik/acme.json.migrated"
+    remote_src: true
+    owner: "{{ vault_ssh_user }}"
+    mode: '0600'
+  when: old_acme_json.stat.exists
+
+- name: Vérifier si les anciennes données NetBird existent
+  stat:
+    path: "/opt/stack/netbird/data"
+  register: old_netbird_data
+
+- name: Migrer les données NetBird depuis l'ancienne stack
+  shell: "cp -a /opt/stack/netbird/data/* {{ backbone_dir }}/netbird/data/"
+  when: old_netbird_data.stat.exists and old_netbird_data.stat.isdir
+  changed_when: true
+
+- name: Corriger les permissions des données migrées
+  file:
+    path: "{{ backbone_dir }}/netbird/data"
+    owner: "{{ vault_ssh_user }}"
+    group: "{{ vault_ssh_user }}"
+    recurse: true
+  when: old_netbird_data.stat.exists and old_netbird_data.stat.isdir
+
+# -- Templates ---------------------------------------------------------------
+- name: Déployer la config dynamique Traefik (services Pi)
+  template:
+    src: "traefik-services.yml.j2"
+    dest: "{{ backbone_dir }}/traefik/dynamic/pi-public.yml"
+    owner: "{{ vault_ssh_user }}"
+    mode: '0644'
+  notify: Reload Backbone Stack
+
+- name: Déployer la config NetBird server
+  template:
+    src: "netbird_config_yaml.j2"
+    dest: "{{ backbone_dir }}/netbird_config.yaml"
+    owner: "{{ vault_ssh_user }}"
+    mode: '0644'
+  register: _nb_config
+  notify: Reload Backbone Stack
+
+- name: Déployer le docker-compose backbone (Traefik + NetBird)
+  template:
+    src: "docker-compose.backbone.yml.j2"
+    dest: "{{ backbone_dir }}/docker-compose.yml"
+    owner: "{{ vault_ssh_user }}"
+    mode: '0644'
+  register: _nb_compose
+  notify: Reload Backbone Stack
+
+# -- Lancement ---------------------------------------------------------------
+- name: Vérifier l'état actuel des containers backbone
+  shell: "cd {{ backbone_dir }} && docker compose ps --format json"
+  register: _backbone_ps
+  changed_when: false
+  check_mode: false
+
+- name: Lancer la stack backbone (Traefik + NetBird)
+  shell: "cd {{ backbone_dir }} && docker compose up -d --remove-orphans"
+  register: _backbone_up
+  changed_when: >-
+    'Started' in _backbone_up.stderr
+    or 'Created' in _backbone_up.stderr
+  when: >-
+    _backbone_ps.stdout == ''
+    or 'exited' in _backbone_ps.stdout | lower
+    or _nb_compose is changed
+    or _nb_config is changed
+
+# -- Validation gRPC ---------------------------------------------------------
+- name: Attendre le port gRPC NetBird (33073/tcp)
+  wait_for:
+    port: 33073
+    host: 127.0.0.1
+    timeout: 60
+    state: started
+  when: not ansible_check_mode
+
+- name: Valider l'API management NetBird (local, sans TLS)
+  uri:
+    url: "http://127.0.0.1:33080/api/accounts"
+    status_code: [200, 401, 403]
+  register: netbird_api_check
+  retries: 10
+  delay: 5
+  until: netbird_api_check.status in [200, 401, 403]
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Échec si NetBird management API injoignable
+  fail:
+    msg: >
+      NetBird management API injoignable sur http://127.0.0.1:33080/api/accounts
+      après 10 tentatives. Vérifier : docker logs netbird-server
+  when:
+    - not ansible_check_mode
+    - netbird_api_check.status is not defined or netbird_api_check.status not in [200, 401, 403]

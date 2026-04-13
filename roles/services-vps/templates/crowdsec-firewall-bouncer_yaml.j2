@@ -1,0 +1,47 @@
+# ============================================================================
+# CrowdSec Firewall Bouncer — Configuration nftables
+# Managed by Ansible — ne pas modifier manuellement
+# ============================================================================
+
+mode: nftables
+pid_dir: /var/run/
+update_frequency: 10s
+daemonize: true
+
+# --- Logs ---
+log_mode: file
+log_dir: /var/log/
+log_level: info
+log_compression: true
+log_max_size: 100
+log_max_backups: 3
+log_max_age: 30
+
+# --- Connexion à la LAPI CrowdSec (dans Docker) ---
+api_url: http://127.0.0.1:8080/
+api_key: {{ vault_crowdsec_lapi_key }}
+insecure_skip_verify: false
+
+# --- Comportement ---
+disable_ipv6: false
+deny_action: DROP
+deny_log: true
+deny_log_prefix: "crowdsec: "
+
+supported_decisions_types:
+  - ban
+
+# --- Tables nftables ---
+nftables:
+  ipv4:
+    enabled: true
+    set-only: false
+    table: crowdsec
+    chain: crowdsec-chain
+    priority: -10
+  ipv6:
+    enabled: true
+    set-only: false
+    table: crowdsec6
+    chain: crowdsec6-chain
+    priority: -10

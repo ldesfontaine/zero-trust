@@ -4,8 +4,9 @@
 *.swp
 *.swo
 *~
+
+# Claude Code
 .claude/
-docs/
 CLAUDE.md
 
 # Ansible

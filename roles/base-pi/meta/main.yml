@@ -1,0 +1,4 @@
+galaxy_info:
+  description: "Pi — paquets, UFW, avahi disable, hardening SSH"
+  min_ansible_version: "2.14"
+allow_duplicates: false

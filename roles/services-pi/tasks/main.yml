@@ -1,0 +1,43 @@
+# ============================================================================
+# services-pi — Tous les services du Pi (L4)
+#
+# Fusionne les anciens rôles stack-pi, bientot, veille-secu.
+#
+# Données persistantes → /mnt/tank/stack  (ZFS mirror NVMe)
+# Images Docker        → /var/lib/docker  (SD card 64Go)
+#
+# Trois réseaux Docker isolés :
+#   brain_public  — BentoPDF, Portfolio (accessibles via VPS → mesh)
+#   brain_private — Seafile, Immich, AdGuard, Bientôt, veille-secu, DBs
+#   brain_vault   — Vaultwarden SEUL (isolé)
+#
+# Usage :
+#   --tags services-pi    → redéploie toute la stack
+#   --tags seafile        → ne cible que Seafile + DB + memcached
+#   --tags adguard        → ne cible que AdGuard
+# ============================================================================
+---
+
+# Infrastructure partagée (compose + .env + attente NetBird) — toujours exécutée
+- import_tasks: _compose.yml
+  tags: [always]
+
+# Services individuels — filtrés par tags
+- import_tasks: adguard.yml
+  tags: [adguard]
+- import_tasks: seafile.yml
+  tags: [seafile]
+- import_tasks: vaultwarden.yml
+  tags: [vaultwarden]
+- import_tasks: immich.yml
+  tags: [immich]
+- import_tasks: bentopdf.yml
+  tags: [bentopdf]
+- import_tasks: portfolio.yml
+  tags: [portfolio]
+- import_tasks: bientot.yml
+  tags: [bientot]
+- import_tasks: veille-secu.yml
+  tags: [veille-secu]
+- import_tasks: node-exporter.yml
+  tags: [node-exporter-pi]

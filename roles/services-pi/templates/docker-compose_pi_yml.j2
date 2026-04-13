@@ -1,0 +1,335 @@
+# ============================================================================
+# Docker Compose Stack Pi — Managed by Ansible
+#
+# Images GHCR pré-buildées — zéro code source sur les serveurs.
+# ============================================================================
+
+services:
+
+  # ══ RÉSEAU PUBLIC (accessibles via VPS → mesh → Pi, sans client VPN) ══════
+
+  bentopdf:
+    image: {{ bentopdf_image }}:{{ bentopdf_version }}
+    container_name: bentopdf
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    ports:
+      - '{{ netbird_bind_ip }}:{{ bentopdf_port }}:8080'
+    networks:
+      - brain_public
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/ 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  portfolio:
+    image: ghcr.io/ldesfontaine/termfolio:{{ portfolio_version }}
+    container_name: portfolio
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    ports:
+      - '{{ netbird_bind_ip }}:{{ portfolio_port }}:3000'
+    networks:
+      - brain_public
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/ 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ══ RÉSEAU PRIVÉ (admin VPN seulement) ═════════════════════════════════════
+
+  seafile-db:
+    image: mariadb:{{ mariadb_version }}
+    container_name: seafile-db
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_LOG_CONSOLE=true
+    volumes:
+      - {{ pi_stack_dir }}/seafile/db:/var/lib/mysql
+    networks:
+      - brain_private
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  memcached:
+    image: memcached:{{ memcached_version }}
+    container_name: seafile-memcached
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    entrypoint: memcached -m 256
+    networks:
+      - brain_private
+    healthcheck:
+      test: ["CMD-SHELL", "echo stats | nc localhost 11211 | grep -q pid"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  seafile:
+    image: seafileltd/seafile-mc:{{ seafile_version }}
+    container_name: seafile
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      - seafile-db
+      - memcached
+    environment:
+      - DB_HOST=seafile-db
+      - DB_ROOT_PASSWD=${DB_ROOT_PASSWD}
+      - SEAFILE_ADMIN_EMAIL=${SEAFILE_ADMIN_EMAIL}
+      - SEAFILE_ADMIN_PASSWORD=${SEAFILE_ADMIN_PASSWORD}
+      - SEAFILE_SERVER_HOSTNAME={{ seafile_subdomain }}.{{ vault_base_domain }}
+      - SEAFILE_SERVER_LETSENCRYPT=false
+      - FORCE_HTTPS_IN_CONF=true
+    volumes:
+      - {{ pi_stack_dir }}/seafile/data:/shared
+    ports:
+      - '{{ netbird_bind_ip }}:{{ seafile_port }}:80'
+    networks:
+      - brain_private
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/ > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ══ RÉSEAU VAULT (Vaultwarden isolé) ═══════════════════════════════════════
+
+  vaultwarden:
+    image: vaultwarden/server:{{ vaultwarden_version }}
+    container_name: vaultwarden
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - DOMAIN=https://{{ vaultwarden_subdomain }}.{{ vault_base_domain }}
+      - SIGNUPS_ALLOWED=false
+    volumes:
+      - {{ pi_stack_dir }}/vaultwarden:/data
+    ports:
+      - '{{ netbird_bind_ip }}:{{ vaultwarden_port }}:80'
+    networks:
+      - brain_vault
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/alive > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ══ IMMICH (photos/vidéos — stockage à froid, ML désactivé) ════════════════
+
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:{{ immich_version }}
+    container_name: immich-server
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      - immich-db
+      - immich-redis
+    environment:
+      - DB_HOSTNAME=immich-db
+      - DB_USERNAME=${IMMICH_DB_USER}
+      - DB_PASSWORD=${IMMICH_DB_PASSWORD}
+      - DB_DATABASE_NAME=${IMMICH_DB_NAME}
+      - REDIS_HOSTNAME=immich-redis
+      - IMMICH_MACHINE_LEARNING_ENABLED=false
+    volumes:
+      - {{ pi_stack_dir }}/immich/upload:/usr/src/app/upload
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - '{{ netbird_bind_ip }}:{{ immich_port }}:2283'
+    networks:
+      - brain_private
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:2283/api/server/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  immich-redis:
+    image: redis:{{ immich_redis_version }}
+    container_name: immich-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - brain_private
+
+  immich-db:
+    image: {{ immich_db_image }}:{{ immich_db_version }}
+    container_name: immich-db
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      - POSTGRES_USER=${IMMICH_DB_USER}
+      - POSTGRES_PASSWORD=${IMMICH_DB_PASSWORD}
+      - POSTGRES_DB=${IMMICH_DB_NAME}
+      - POSTGRES_INITDB_ARGS='--data-checksums'
+    volumes:
+      - {{ pi_stack_dir }}/immich/db:/var/lib/postgresql/data
+    networks:
+      - brain_private
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d {{ vault_immich_db_name }} -U {{ vault_immich_db_user }}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ══ ADGUARD HOME ═══════════════════════════════════════════════════════════
+
+  adguard:
+    image: adguard/adguardhome:{{ adguard_version }}
+    container_name: adguard
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - {{ pi_stack_dir }}/adguard/work:/opt/adguardhome/work
+      - {{ pi_stack_dir }}/adguard/conf:/opt/adguardhome/conf
+    ports:
+      - '{{ netbird_bind_ip }}:5353:53/tcp'
+      - '{{ netbird_bind_ip }}:5353:53/udp'
+      - '{{ netbird_bind_ip }}:{{ adguard_ui_port }}:3000'
+    networks:
+      - brain_private
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/ 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # adguard-exporter SUPPRIMÉ — remplacé par module natif Bientôt
+
+  # ══ BIENTÔT (monitoring + alerting) ════════════════════════════════════════
+
+  bientot-server:
+    image: ghcr.io/ldesfontaine/bientot-server:{{ bientot_server_version }}
+    container_name: bientot-server
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    env_file:
+      - .env
+    volumes:
+      - {{ pi_stack_dir }}/bientot:/data
+    ports:
+      - '{{ netbird_bind_ip }}:{{ bientot_port }}:{{ bientot_port }}'
+    networks:
+      - brain_private
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:{{ bientot_port }}/ 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ══ VEILLE SÉCU ════════════════════════════════════════════════════════════
+
+  veille-secu:
+    image: ghcr.io/ldesfontaine/veille-secu:{{ veille_secu_version }}
+    container_name: veille-secu
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    env_file:
+      - .env
+    volumes:
+      - {{ pi_stack_dir }}/veille-secu:/data
+    ports:
+      - '{{ netbird_bind_ip }}:{{ veille_secu_web_port }}:{{ veille_secu_web_port }}'
+    networks:
+      - brain_private
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:{{ veille_secu_web_port }}/ 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ══ MONITORING ═════════════════════════════════════════════════════════════
+
+  node-exporter:
+    image: prom/node-exporter:{{ node_exporter_version }}
+    container_name: node-exporter
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pid: host
+    ports:
+      - '{{ netbird_bind_ip }}:9100:9100'
+    volumes:
+      - /:/host:ro,rslave
+    command:
+      - '--path.rootfs=/host'
+    networks:
+      - brain_private
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9100/metrics 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  brain_public:
+    driver: bridge
+    name: brain_public
+
+  brain_private:
+    driver: bridge
+    name: brain_private
+
+  brain_vault:
+    driver: bridge
+    name: brain_vault

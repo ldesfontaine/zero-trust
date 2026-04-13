@@ -1,0 +1,28 @@
+# ============================================================================
+# mesh-config — ACL NetBird + DNS NetBird + AdGuard DNS rewrites
+#
+# Fusionne les anciens rôles netbird-acl, netbird-dns, adguard-dns.
+#
+# Groupes :
+#   sentinelle  → VPS uniquement
+#   cerveau     → Pi uniquement
+#   infra       → sentinelle + futures machines infra (scalable)
+#   admins      → tous les autres peers (laptops, phones, etc.)
+#
+# 5 Policies (deny-by-default, Default supprimée) :
+#   admins-sentinelle        : admins ↔ VPS   — accès total
+#   admins-cerveau           : admins ↔ Pi    — accès total
+#   infra-cerveau-web        : infra  → Pi    — TCP backends Traefik + 3002
+#   cerveau-sentinelle-push  : Pi     → VPS   — TCP 443, SSH (push Ntfy, etc.)
+#   infra-icmp               : infra  ↔ Pi    — ICMP health checks
+# ============================================================================
+---
+
+- import_tasks: acl.yml
+  tags: [mesh-config, acl]
+
+- import_tasks: dns.yml
+  tags: [mesh-config, dns]
+
+- import_tasks: adguard-rewrites.yml
+  tags: [mesh-config, adguard]

@@ -1,0 +1,72 @@
+#!/usr/sbin/nft -f
+# Managed by Ansible — ne pas modifier manuellement
+#
+# Firewall nftables VPS (Sentinelle) — 4 ports : SSH custom, 80, 443, 3478
+#
+# REGLES DE COHABITATION (Debian 12 : iptables = iptables-nft) :
+# - Ne PAS utiliser "flush ruleset" — détruit les tables Docker/NetBird/CrowdSec
+# - "delete table inet filter" ne touche QUE notre table de filtrage
+# - Docker gère ses tables (ip filter, ip nat) via iptables-nft
+# - CrowdSec gère ses tables (inet crowdsec, inet crowdsec6) via le bouncer
+# - NetBird gère sa table (inet nftables-netbird-acl) via le daemon
+
+table inet filter
+delete table inet filter
+
+table inet filter {
+
+  chain input {
+    type filter hook input priority 0; policy drop;
+
+    # Loopback
+    iif "lo" accept
+
+    # Connexions établies
+    ct state established,related accept
+
+    # ICMP (ping)
+    ip protocol icmp accept
+    ip6 nexthdr ipv6-icmp accept
+
+{% if (ssh_bootstrap_open | default(ansible_local.ssh_hardened.ssh_bootstrap_open | default(true))) | bool %}
+    # SSH bootstrap (port 22) — désactivé automatiquement après hardening
+    tcp dport 22 accept
+{% endif %}
+
+    # SSH durci
+    tcp dport {{ vault_ssh_port }} accept
+
+    # HTTP/HTTPS (Traefik + Let's Encrypt)
+    tcp dport { 80, 443 } accept
+
+    # NetBird STUN (UDP)
+    udp dport 3478 accept
+
+    # Log et drop le reste
+    counter drop
+  }
+
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+
+    # Retour trafic établi
+    ct state established,related accept
+
+    # Docker DNAT — restreint aux ports explicitement publiés
+    ct status dnat tcp dport { 80, 443 } accept
+    ct status dnat udp dport 3478 accept
+
+    # Docker : containers → internet (outbound — ports restreints)
+    iifname "docker0" oifname != "docker0" tcp dport { 53, 80, 443 } accept
+    iifname "docker0" oifname != "docker0" udp dport 53 accept
+    iifname "br-*" oifname != "br-*" tcp dport { 53, 80, 443 } accept
+    iifname "br-*" oifname != "br-*" udp dport 53 accept
+
+    # Traefik → backends Pi via NetBird mesh
+    iifname "br-*" ip daddr 100.64.0.0/10 tcp dport { {{ adguard_ui_port }}, {{ bientot_port }}, {{ bentopdf_port }}, {{ portfolio_port }}, {{ seafile_port }}, {{ vaultwarden_port }}, {{ immich_port }}, {{ veille_secu_web_port }} } accept
+  }
+
+  chain output {
+    type filter hook output priority 0; policy accept;
+  }
+}

@@ -1,0 +1,23 @@
+# Immich + PostgreSQL + Redis (stockage à froid, ML désactivé)
+---
+- name: Création des dossiers Immich
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ vault_pi_ssh_user }}"
+    group: "{{ vault_pi_ssh_user }}"
+    mode: '0755'
+  loop:
+    - "{{ pi_stack_dir }}/immich"
+    - "{{ pi_stack_dir }}/immich/upload"
+    - "{{ pi_stack_dir }}/immich/db"
+    - "{{ pi_stack_dir }}/immich/model-cache"
+
+- name: Pull des images Immich
+  shell: "cd {{ pi_stack_dir }} && docker compose pull immich-server immich-redis immich-db"
+  changed_when: false
+
+- name: Lancement de Immich
+  shell: "cd {{ pi_stack_dir }} && docker compose up -d immich-server immich-redis immich-db"
+  register: _immich_up
+  changed_when: "'Started' in _immich_up.stderr or 'Created' in _immich_up.stderr"

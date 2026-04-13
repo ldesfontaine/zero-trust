@@ -1,0 +1,111 @@
+# ============================================================================
+# base-pi — Paquets Pi-only, UFW, avahi disable, hardening SSH
+#
+# Prérequis : rôle common (apt upgrade, outils de base, unattended-upgrades)
+#
+# Le Pi n'est PAS exposé sur internet.
+# UFW n'ouvre que le SSH (port custom). AdGuard DNS (port 53) est bloqué
+# depuis l'extérieur — seul le réseau NetBird peut y accéder.
+#
+# SSH hardening :
+#   Run 1 : SSH sur 22 → déploie sshd_config → restart async →
+#           wait_for port durci → UFW enable → supprime port 22
+#   Run 2+: idempotent
+# ============================================================================
+---
+
+# --- Paquets spécifiques Pi ---
+
+- name: Installer UFW
+  apt:
+    name:
+      - ufw
+    state: present
+
+# --- Désactivation avahi-daemon ---
+# avahi occupe le port 5353/udp (mDNS) — conflit avec AdGuard Home
+
+- name: Désactiver avahi-daemon (libère le port 5353/udp pour AdGuard)
+  systemd:
+    name: avahi-daemon
+    state: stopped
+    enabled: no
+  ignore_errors: true
+
+- name: Désactiver avahi-daemon socket
+  systemd:
+    name: avahi-daemon.socket
+    state: stopped
+    enabled: no
+  ignore_errors: true
+
+# --- Firewall UFW ---
+# UFW skip en check mode : binaire pas encore installé lors du premier run
+
+- name: UFW - Autoriser SSH (port custom)
+  ufw:
+    rule: allow
+    port: "{{ vault_pi_ssh_port | string }}"
+    proto: tcp
+  when: not ansible_check_mode
+
+# AdGuard DNS écoute sur 0.0.0.0:53 — UFW bloque depuis l'extérieur
+- name: UFW - Bloquer DNS depuis l'extérieur (AdGuard protégé par NetBird)
+  ufw:
+    rule: deny
+    port: "53"
+    proto: any
+  when: not ansible_check_mode
+
+# --- Hardening SSH ---
+
+- name: Déploiement de la configuration SSH durcie
+  template:
+    src: sshd_config.j2
+    dest: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: '0600'
+    validate: '/usr/sbin/sshd -t -f %s'
+  vars:
+    ssh_user: "{{ vault_pi_ssh_user }}"
+    ssh_port: "{{ vault_pi_ssh_port }}"
+  register: _sshd_config
+
+- name: Redémarrer SSH (async — connexion encore sur port 22)
+  systemd:
+    name: sshd
+    state: restarted
+  async: 1
+  poll: 0
+  ignore_errors: true
+  when: _sshd_config is changed
+
+- name: Attendre que SSH soit disponible sur le nouveau port
+  wait_for:
+    host: "{{ ansible_host }}"
+    port: "{{ vault_pi_ssh_port }}"
+    delay: 3
+    timeout: 30
+  delegate_to: localhost
+  become: false
+  when: _sshd_config is changed
+
+- name: Mise à jour du port SSH pour la session Ansible en cours
+  set_fact:
+    ansible_port: "{{ vault_pi_ssh_port }}"
+
+# UFW activé ICI — SSH tourne déjà sur le port durci, Ansible déjà basculé
+- name: Activer UFW
+  ufw:
+    state: enabled
+  when: not ansible_check_mode
+
+# Port 22 fermé après activation UFW
+- name: Supprimer la règle UFW autorisant le port 22 (bootstrap)
+  ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    delete: yes
+  when: vault_pi_ssh_port | int != 22 and not ansible_check_mode

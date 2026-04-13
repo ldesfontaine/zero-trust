@@ -1,97 +1,45 @@
 # ============================================================================
-# Infrastructure (L1-L3) — Systeme, hardening, Docker, backbone reseau, mesh
-# Usage : ansible-playbook -i inventory.ini playbooks/infrastructure.yml
+# Phase 1 — Infrastructure (socle + mesh)
+# Usage : ansible-playbook -i inventory.ini playbooks/infrastructure.yml --ask-vault-pass
 #
-# Prerequis : L0 (bootstrap) deja execute — user admin existant.
-# Idempotent : peut etre relance autant de fois que necessaire.
+# Prérequis : L0 (bootstrap) déjà exécuté — user admin existant.
+# Idempotent : peut être relancé autant de fois que nécessaire.
 #
-# La detection du contexte (connexion locale/SSH, route LAN/NetBird,
-# port SSH durci/22) est automatique via le role connection-resolver.
-#
-# VPS L3 : traefik (L3a) → netbird-server (L3b) → netbird-client (L3c)
-# Le serveur NetBird est deploye AVANT l'enrollment des clients.
-# Pause manuelle entre L3b et L3c : creer les setup keys sur le dashboard.
+# Après ce playbook, mesh.domain.com est accessible → enrollment NetBird possible.
 # ============================================================================
 ---
 
-# ============================================================
-# PLAY 1 — Infrastructure VPS / Sentinelle (L1-L3)
-# ============================================================
-- name: "Infrastructure Sentinelle (VPS) — L1-L3"
+# Phase 1 — VPS
+- name: "Infrastructure Sentinelle (VPS)"
   hosts: dmz
   become: true
   gather_facts: false
   ignore_unreachable: true
-
   pre_tasks:
-    - name: "Vérifier les variables critiques (VPS)"
-      assert:
-        that:
-          - vault_ssh_user is defined
-          - vault_ssh_port is defined
-        fail_msg: "Variables VPS manquantes — vérifier group_vars/all.yml et host_vars/vps_serv.yml"
+    - include_role: { name: connection-resolver }
       tags: [always]
-
-    - name: "Resoudre la connexion VPS"
-      include_role:
-        name: connection-resolver
+    - include_role: { name: netbird-client, tasks_from: resolve.yml }
       tags: [always]
-
-    - name: "Resoudre l'IP de binding NetBird (VPS)"
-      include_role:
-        name: netbird-resolve
-      tags: [always]
-
   roles:
-    - role: system-vps
-      tags: [layer1, system-vps]
-    - role: hardening-vps
-      tags: [layer1, hardening-vps]
-    - role: docker
-      tags: [layer2, docker]
-    - role: traefik
-      tags: [layer3, traefik]
-    - role: netbird-server
-      tags: [layer3, netbird-server]
-    - role: netbird-client
-      tags: [layer3, netbird-client]
+    - { role: common,         tags: [common] }
+    - { role: base-vps,       tags: [base, hardening, nftables, ssh] }
+    - { role: docker,         tags: [docker] }
+    - { role: backbone,       tags: [backbone, traefik, netbird-server] }
+    - { role: netbird-client, tags: [netbird-client] }
 
-
-# ============================================================
-# PLAY 2 — Infrastructure Pi / Cerveau (L1-L3)
-# ============================================================
-- name: "Infrastructure Cerveau (Pi) — L1-L3"
+# Phase 1 — Pi
+- name: "Infrastructure Cerveau (Pi)"
   hosts: lan
   become: true
   gather_facts: false
   ignore_unreachable: true
-
   pre_tasks:
-    - name: "Vérifier les variables critiques (Pi)"
-      assert:
-        that:
-          - vault_pi_ssh_user is defined
-          - vault_pi_ssh_port is defined
-          - host_netbird_ip is defined
-        fail_msg: "Variables Pi manquantes — vérifier group_vars/all.yml et host_vars/pi_serv.yml"
+    - include_role: { name: connection-resolver }
       tags: [always]
-
-    - name: "Resoudre la connexion Pi"
-      include_role:
-        name: connection-resolver
+    - include_role: { name: netbird-client, tasks_from: resolve.yml }
       tags: [always]
-
-    - name: "Resoudre l'IP de binding NetBird (Pi)"
-      include_role:
-        name: netbird-resolve
-      tags: [always]
-
   roles:
-    - role: system-pi
-      tags: [layer1, system-pi]
-    - role: hardening-pi
-      tags: [layer1, hardening-pi]
-    - role: docker
-      tags: [layer2, docker]
-    - role: netbird-client
-      tags: [layer3, netbird-client]
+    - { role: common,         tags: [common] }
+    - { role: base-pi,        tags: [base, hardening, ufw, ssh] }
+    - { role: docker,         tags: [docker] }
+    - { role: netbird-client, tags: [netbird-client] }

@@ -1,0 +1,33 @@
+# ============================================================================
+# CrowdSec — Sources d'acquisition des logs
+# Managed by Ansible — ne pas modifier manuellement
+# ============================================================================
+---
+# --- Logs Traefik — parser crowdsecurity/traefik ---
+source: docker
+container_name:
+  - "traefik"
+labels:
+  type: traefik
+---
+# --- Tous les autres containers Docker ---
+source: docker
+container_name:
+  - "*"
+labels:
+  type: docker
+---
+# --- Logs SSH via journald ---
+source: journald
+journalctl_filter:
+  - "_SYSTEMD_UNIT=ssh.service"
+labels:
+  type: syslog
+---
+# --- Logs système hôte ---
+source: file
+filenames:
+  - /var/log/auth.log
+  - /var/log/syslog
+labels:
+  type: syslog

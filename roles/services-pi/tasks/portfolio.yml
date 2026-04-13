@@ -1,0 +1,10 @@
+# Portfolio — image GHCR (plus de git clone + build), read_only + tmpfs
+---
+- name: Pull de l'image Portfolio
+  shell: "cd {{ pi_stack_dir }} && docker compose pull portfolio"
+  changed_when: false
+
+- name: Lancement de Portfolio
+  shell: "cd {{ pi_stack_dir }} && docker compose up -d portfolio"
+  register: _portfolio_up
+  changed_when: "'Started' in _portfolio_up.stderr or 'Created' in _portfolio_up.stderr"

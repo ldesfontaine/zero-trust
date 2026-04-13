@@ -1,0 +1,10 @@
+# BentoPDF — image GHCR, read_only + tmpfs
+---
+- name: Pull de l'image BentoPDF
+  shell: "cd {{ pi_stack_dir }} && docker compose pull bentopdf"
+  changed_when: false
+
+- name: Lancement de BentoPDF
+  shell: "cd {{ pi_stack_dir }} && docker compose up -d bentopdf"
+  register: _bentopdf_up
+  changed_when: "'Started' in _bentopdf_up.stderr or 'Created' in _bentopdf_up.stderr"
