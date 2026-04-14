@@ -1,9 +1,9 @@
 ---
 - name: Reload Docker Stack Pi
-  shell: "cd {{ pi_stack_dir }} && docker compose up -d --remove-orphans"
+  ansible.builtin.shell: "cd {{ pi_stack_dir }} && docker compose up -d --remove-orphans"
   register: _compose_reload_pi
   changed_when: "'Started' in _compose_reload_pi.stderr or 'Created' in _compose_reload_pi.stderr"
 
 - name: Restart AdGuard
-  shell: "cd {{ pi_stack_dir }} && docker compose restart adguard"
+  ansible.builtin.shell: "cd {{ pi_stack_dir }} && docker compose restart adguard"
   changed_when: false

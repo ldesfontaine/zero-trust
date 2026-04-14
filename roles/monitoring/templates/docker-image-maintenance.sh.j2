@@ -3,7 +3,7 @@
 #
 # Maintenance hebdomadaire des images Docker
 # - Prune les anciennes images
-# - Scan Trivy des images (--format json)
+# - Scan Grype des images (--output json)
 #   → envoie le JSON complet à Bientôt si configuré
 #   → sinon, fallback sur comptage + Ntfy
 # Les versions sont épinglées — les mises à jour passent par Ansible
@@ -14,14 +14,14 @@ NTFY_URL="https://{{ ntfy_subdomain }}.{{ vault_base_domain }}/docker-maintenanc
 NTFY_AUTH="Authorization: Bearer {{ vault_ntfy_auth_token }}"
 LOG_PREFIX="[docker-maintenance]"
 DATE=$(date '+%Y-%m-%d %H:%M')
-TRIVY_ALERTS=""
-TRIVY_TOTAL_VULNS=0
+SCAN_ALERTS=""
+SCAN_TOTAL_VULNS=0
 
-{% if trivy_bientot_url | default('') %}
-# Bientôt — envoi des résultats Trivy pour corrélation CVE
-BIENTOT_URL="{{ trivy_bientot_url }}"
-BIENTOT_TOKEN="{{ trivy_bientot_token }}"
-BIENTOT_MACHINE="{{ trivy_bientot_machine_id }}"
+{% if scan_bientot_url | default('') %}
+# Bientôt — envoi des résultats Grype pour corrélation CVE
+BIENTOT_URL="{{ scan_bientot_url }}"
+BIENTOT_TOKEN="{{ scan_bientot_token }}"
+BIENTOT_MACHINE="{{ scan_bientot_machine_id }}"
 BIENTOT_ENABLED=true
 {% else %}
 BIENTOT_ENABLED=false
@@ -34,24 +34,24 @@ echo "${LOG_PREFIX} Prune des images non utilisées..."
 PRUNE_OUTPUT=$(docker image prune -af --filter "until={{ docker_image_prune_age }}" 2>&1)
 echo "${PRUNE_OUTPUT}"
 
-# --- 2. Scan Trivy (CVE HIGH/CRITICAL — format JSON) ---
-echo "${LOG_PREFIX} Scan Trivy des images en cours d'exécution..."
+# --- 2. Scan Grype (CVE — format JSON) ---
+echo "${LOG_PREFIX} Scan Grype des images en cours d'exécution..."
 
 for IMAGE in $(docker ps --format '{% raw %}{{.Image}}{% endraw %}' | sort -u); do
   echo "${LOG_PREFIX} Scan: ${IMAGE}"
-  TRIVY_JSON=$(trivy image --severity HIGH,CRITICAL --no-progress --format json "${IMAGE}" 2>/dev/null) || {
-    echo "${LOG_PREFIX} WARN: échec du scan Trivy pour ${IMAGE}"
+  GRYPE_JSON=$(grype "${IMAGE}" --output json --only-fixed 2>/dev/null) || {
+    echo "${LOG_PREFIX} WARN: échec du scan Grype pour ${IMAGE}"
     continue
   }
 
-  VULN_COUNT=$(echo "${TRIVY_JSON}" | jq '[.Results[]?.Vulnerabilities // [] | length] | add // 0')
+  VULN_COUNT=$(echo "${GRYPE_JSON}" | jq '[.matches // [] | length]')
 
   if [ "${BIENTOT_ENABLED}" = "true" ]; then
     # Envoi du JSON complet à Bientôt pour corrélation CVE
     INGEST_PAYLOAD=$(jq -n \
       --arg machine "${BIENTOT_MACHINE}" \
       --arg image "${IMAGE}" \
-      --argjson results "${TRIVY_JSON}" \
+      --argjson results "${GRYPE_JSON}" \
       '{machine: $machine, image: $image, results: $results}')
 
     HTTP_CODE=$(curl -sf -o /dev/null -w '%{http_code}' \
@@ -59,7 +59,7 @@ for IMAGE in $(docker ps --format '{% raw %}{{.Image}}{% endraw %}' | sort -u); 
       -H "Authorization: Bearer ${BIENTOT_TOKEN}" \
       -H "Content-Type: application/json" \
       -d "${INGEST_PAYLOAD}" \
-      "${BIENTOT_URL}/trivy/ingest" 2>/dev/null) || HTTP_CODE="000"
+      "${BIENTOT_URL}/scan/ingest" 2>/dev/null) || HTTP_CODE="000"
 
     if [ "${HTTP_CODE}" = "200" ]; then
       echo "${LOG_PREFIX} Bientôt: ${IMAGE} — ${VULN_COUNT} CVE envoyées"
@@ -69,19 +69,19 @@ for IMAGE in $(docker ps --format '{% raw %}{{.Image}}{% endraw %}' | sort -u); 
   fi
 
   if [ "${VULN_COUNT}" -gt 0 ]; then
-    TRIVY_ALERTS="${TRIVY_ALERTS}\n${IMAGE}: ${VULN_COUNT} vulnérabilités HIGH/CRITICAL"
-    TRIVY_TOTAL_VULNS=$((TRIVY_TOTAL_VULNS + VULN_COUNT))
+    SCAN_ALERTS="${SCAN_ALERTS}\n${IMAGE}: ${VULN_COUNT} vulnérabilités avec fix disponible"
+    SCAN_TOTAL_VULNS=$((SCAN_TOTAL_VULNS + VULN_COUNT))
     echo "${LOG_PREFIX} ALERTE: ${IMAGE} — ${VULN_COUNT} CVE"
   fi
 done
 
 # --- 3. Notification Ntfy (résumé maintenance) ---
-if [ -n "${TRIVY_ALERTS}" ]; then
+if [ -n "${SCAN_ALERTS}" ]; then
   if [ "${BIENTOT_ENABLED}" = "true" ]; then
     # Bientôt gère les détails — Ntfy ne fait qu'un résumé court
-    BODY="Scan Trivy terminé — ${TRIVY_TOTAL_VULNS} CVE détectées. Détails dans Bientôt."
+    BODY="Scan Grype terminé — ${SCAN_TOTAL_VULNS} CVE détectées. Détails dans Bientôt."
   else
-    BODY="Scan sécurité — vulnérabilités détectées:\n${TRIVY_ALERTS}"
+    BODY="Scan sécurité — vulnérabilités détectées:\n${SCAN_ALERTS}"
   fi
   PRIORITY="high"
   TAGS="warning"

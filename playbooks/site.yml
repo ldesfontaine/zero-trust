@@ -3,6 +3,6 @@
 # Usage : ansible-playbook -i inventory.ini playbooks/site.yml --ask-vault-pass
 # ============================================================================
 ---
-- import_playbook: infrastructure.yml
-- import_playbook: services.yml
-- import_playbook: mesh-config.yml
+- ansible.builtin.import_playbook: infrastructure.yml  # noqa: name[play]
+- ansible.builtin.import_playbook: services.yml  # noqa: name[play]
+- ansible.builtin.import_playbook: mesh-config.yml  # noqa: name[play]

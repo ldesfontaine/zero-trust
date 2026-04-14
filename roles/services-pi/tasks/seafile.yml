@@ -1,7 +1,7 @@
 # Seafile + MariaDB + Memcached
 ---
 - name: Création des dossiers Seafile
-  file:
+  ansible.builtin.file:
     path: "{{ item }}"
     state: directory
     owner: "{{ vault_pi_ssh_user }}"
@@ -13,10 +13,10 @@
     - "{{ pi_stack_dir }}/seafile/db"
 
 - name: Pull des images Seafile
-  shell: "cd {{ pi_stack_dir }} && docker compose pull seafile seafile-db memcached"
+  ansible.builtin.shell: "cd {{ pi_stack_dir }} && docker compose pull seafile seafile-db memcached"
   changed_when: false
 
 - name: Lancement de Seafile
-  shell: "cd {{ pi_stack_dir }} && docker compose up -d seafile seafile-db memcached"
+  ansible.builtin.shell: "cd {{ pi_stack_dir }} && docker compose up -d seafile seafile-db memcached"
   register: _seafile_up
   changed_when: "'Started' in _seafile_up.stderr or 'Created' in _seafile_up.stderr"

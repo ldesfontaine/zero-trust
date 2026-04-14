@@ -97,7 +97,7 @@ ansible-playbook -i inventory.ini playbooks/restore.yml --tags vaultwarden --lim
 | `services-vps` | CrowdSec, Ntfy, bientot-agent, node-exporter |
 | `services-pi` | Seafile, Vaultwarden, Immich, AdGuard, BentoPDF, Portfolio, Bientot, veille-secu |
 | `backup` | ZFS snapshots, backup GPG vers VPS, backup USB LUKS |
-| `monitoring` | Health checks, alerting Ntfy, Trivy scan, image maintenance |
+| `monitoring` | Scan CVE Grype, maintenance images Docker |
 | `connection-resolver` | Resolution dynamique SSH (local/mesh/CI) |
 
 ## Securite
@@ -110,7 +110,7 @@ ansible-playbook -i inventory.ini playbooks/restore.yml --tags vaultwarden --lim
 - **SSH** : Ed25519, port custom, password off, root off
 - **Mesh** : ACL deny-by-default, 5 policies unidirectionnelles
 - **Backup 3-2-1** : ZFS local + GPG off-site + LUKS air-gapped
-- **Supply chain** : images GHCR pre-buildees, Trivy scan hebdomadaire
+- **Supply chain** : images GHCR pre-buildees, Grype scan hebdomadaire (Trivy retire mars 2026)
 
 ## Documentation
 
@@ -122,7 +122,7 @@ La documentation detaillee est dans [`docs/`](docs/) :
 | `01-MACHINES.md` | Machines, ports, reseaux Docker, ACLs |
 | `02-ROLES.md` | 12 roles, tags, dependances |
 | `03-WORKFLOW.md` | Run 0, playbooks, mises a jour |
-| `06-MIGRATION.md` | Migration ancien → nouveau (14 etapes) |
+| `04-SECURITY.md` | Securite : firewall, middlewares, containers, backup |
 | `07-EXTERNAL-APPS.md` | GitHub Actions, GHCR, publication |
 | `08-DISASTER-RECOVERY.md` | 6 scenarios de panne |
 | `09-SECRETS.md` | Inventaire secrets, rotation |

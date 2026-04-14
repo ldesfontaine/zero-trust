@@ -8,11 +8,12 @@
 ---
 
 - name: "INFO — ACL NetBird ignorés (enrollment requis)"
-  debug:
+  ansible.builtin.debug:
     msg: "vault_pi_netbird_ip non renseigné — ACL NetBird ignorés. Relancer après enrollment."
   when: vault_pi_netbird_ip in ["REMPLACER_APRES_ENROLEMENT_NETBIRD", "CHANGE_ME"]
 
-- when:
+- name: "ACL NetBird : Configurer groupes et policies"
+  when:
     - vault_pi_netbird_ip not in ["REMPLACER_APRES_ENROLEMENT_NETBIRD", "CHANGE_ME"]
     - not ansible_check_mode
   block:
@@ -20,7 +21,7 @@
     # ── Peers ──────────────────────────────────────────────────────────────
 
     - name: Récupérer la liste des peers NetBird
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/peers"
         method: GET
         headers:
@@ -34,19 +35,23 @@
       changed_when: false
 
     - name: Extraire peer ID VPS
-      set_fact:
+      ansible.builtin.set_fact:
         nb_vps_peer_id: "{{ nb_peers_resp.json | selectattr('ip', 'equalto', vault_vps_netbird_ip) | map(attribute='id') | list | first }}"
 
     - name: Extraire peer ID Pi
-      set_fact:
+      ansible.builtin.set_fact:
         nb_pi_peer_id: "{{ nb_peers_resp.json | selectattr('ip', 'equalto', vault_pi_netbird_ip) | map(attribute='id') | list | first }}"
 
     - name: Extraire IDs des peers admins (tous sauf VPS et Pi)
-      set_fact:
-        nb_admin_peer_ids: "{{ nb_peers_resp.json | rejectattr('ip', 'equalto', vault_vps_netbird_ip) | rejectattr('ip', 'equalto', vault_pi_netbird_ip) | map(attribute='id') | list }}"
+      ansible.builtin.set_fact:
+        nb_admin_peer_ids: >-
+          {{ nb_peers_resp.json
+          | rejectattr('ip', 'equalto', vault_vps_netbird_ip)
+          | rejectattr('ip', 'equalto', vault_pi_netbird_ip)
+          | map(attribute='id') | list }}
 
     - name: Vérifier qu'il existe au moins un peer admin
-      assert:
+      ansible.builtin.assert:
         that: nb_admin_peer_ids | length > 0
         fail_msg: >
           ERREUR : Aucun peer admin trouvé dans NetBird (tous les peers = VPS + Pi).
@@ -57,7 +62,7 @@
     # ── Groupes ────────────────────────────────────────────────────────────
 
     - name: Récupérer les groupes NetBird existants
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/groups"
         method: GET
         headers:
@@ -72,7 +77,7 @@
 
     # --- Groupe sentinelle (VPS) ---
     - name: Créer le groupe sentinelle
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/groups"
         method: POST
         headers:
@@ -91,7 +96,7 @@
       changed_when: true
 
     - name: Mettre à jour le groupe sentinelle
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/groups/{{ (nb_groups_resp.json | selectattr('name', 'equalto', 'sentinelle') | list | first).id }}"
         method: PUT
         headers:
@@ -111,7 +116,7 @@
 
     # --- Groupe cerveau (Pi) ---
     - name: Créer le groupe cerveau
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/groups"
         method: POST
         headers:
@@ -130,7 +135,7 @@
       changed_when: true
 
     - name: Mettre à jour le groupe cerveau
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/groups/{{ (nb_groups_resp.json | selectattr('name', 'equalto', 'cerveau') | list | first).id }}"
         method: PUT
         headers:
@@ -150,7 +155,7 @@
 
     # --- Groupe infra (sentinelle + futures machines) ---
     - name: Créer le groupe infra
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/groups"
         method: POST
         headers:
@@ -169,7 +174,7 @@
       changed_when: true
 
     - name: Mettre à jour le groupe infra
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/groups/{{ (nb_groups_resp.json | selectattr('name', 'equalto', 'infra') | list | first).id }}"
         method: PUT
         headers:
@@ -189,7 +194,7 @@
 
     # --- Groupe admins (tous les autres peers) ---
     - name: Créer le groupe admins
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/groups"
         method: POST
         headers:
@@ -207,7 +212,7 @@
       changed_when: true
 
     - name: Mettre à jour le groupe admins (sync nouveaux peers)
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/groups/{{ (nb_groups_resp.json | selectattr('name', 'equalto', 'admins') | list | first).id }}"
         method: PUT
         headers:
@@ -227,7 +232,7 @@
     # ── Re-fetch groupes pour IDs à jour ───────────────────────────────────
 
     - name: Re-fetch groupes NetBird (IDs à jour après création)
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/groups"
         method: GET
         headers:
@@ -241,16 +246,16 @@
       changed_when: false
 
     - name: Extraire les IDs des groupes
-      set_fact:
+      ansible.builtin.set_fact:
         nb_grp_sentinelle: "{{ nb_groups_final.json | selectattr('name', 'equalto', 'sentinelle') | map(attribute='id') | first }}"
-        nb_grp_cerveau:    "{{ nb_groups_final.json | selectattr('name', 'equalto', 'cerveau')    | map(attribute='id') | first }}"
-        nb_grp_infra:      "{{ nb_groups_final.json | selectattr('name', 'equalto', 'infra')      | map(attribute='id') | first }}"
-        nb_grp_admins:     "{{ nb_groups_final.json | selectattr('name', 'equalto', 'admins')     | map(attribute='id') | first }}"
+        nb_grp_cerveau: "{{ nb_groups_final.json | selectattr('name', 'equalto', 'cerveau') | map(attribute='id') | first }}"
+        nb_grp_infra: "{{ nb_groups_final.json | selectattr('name', 'equalto', 'infra') | map(attribute='id') | first }}"
+        nb_grp_admins: "{{ nb_groups_final.json | selectattr('name', 'equalto', 'admins') | map(attribute='id') | first }}"
 
     # ── Policies ───────────────────────────────────────────────────────────
 
     - name: Récupérer les policies NetBird existantes
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/policies"
         method: GET
         headers:
@@ -265,7 +270,7 @@
 
     # Suppression de la policy Default (All→All) — deny-by-default
     - name: Supprimer la policy Default (All→All)
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/policies/{{ item.id }}"
         method: DELETE
         headers:
@@ -280,7 +285,7 @@
 
     # Supprimer l'ancienne policy monitoring (9100/6060 via mesh — remplacée par localhost)
     - name: Supprimer l'ancienne policy cerveau-sentinelle-monitoring
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/policies/{{ item.id }}"
         method: DELETE
         headers:
@@ -295,7 +300,7 @@
 
     # Policy 1 : admins ↔ sentinelle (accès total)
     - name: Créer policy admins-sentinelle
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/policies"
         method: POST
         headers:
@@ -326,7 +331,7 @@
 
     # Policy 2 : admins ↔ cerveau (accès total)
     - name: Créer policy admins-cerveau
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/policies"
         method: POST
         headers:
@@ -357,7 +362,7 @@
 
     # Policy 3 : infra → cerveau (TCP backends Traefik + bientot_agent_port)
     - name: Créer policy infra-cerveau-web
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/policies"
         method: POST
         headers:
@@ -397,7 +402,7 @@
       changed_when: true
 
     - name: Mettre à jour policy infra-cerveau-web
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/policies/{{ (nb_policies_resp.json | selectattr('name', 'equalto', 'infra-cerveau-web') | list | first).id }}"
         method: PUT
         headers:
@@ -438,7 +443,7 @@
 
     # Policy 4 : cerveau → sentinelle (TCP 443 + SSH — push Ntfy, etc.)
     - name: Créer policy cerveau-sentinelle-push
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/policies"
         method: POST
         headers:
@@ -472,7 +477,7 @@
 
     # Policy 5 : ICMP bidirectionnel infra ↔ cerveau
     - name: Créer policy infra-icmp
-      uri:
+      ansible.builtin.uri:
         url: "https://{{ netbird_fqdn }}/api/policies"
         method: POST
         headers:
@@ -502,7 +507,7 @@
       changed_when: true
 
     - name: "INFO — ACL NetBird Zero Trust actifs"
-      debug:
+      ansible.builtin.debug:
         msg: >
           Policies NetBird configurées :
           - admins ↔ sentinelle  : accès total

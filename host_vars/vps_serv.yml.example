@@ -15,7 +15,8 @@ host_netbird_ip: "CHANGE_ME"                  # IP mesh du VPS (ex: 100.64.x.x)
 vault_crowdsec_lapi_key: "CHANGE_ME"          # openssl rand -hex 32
 vault_crowdsec_bientot_key: "CHANGE_ME"       # openssl rand -hex 32 (watcher Bientôt)
 vault_admin_public_ip: "CHANGE_ME"            # IP publique admin (whitelist CrowdSec)
-vault_ntfy_auth_token: "CHANGE_ME"            # Token Bearer Ntfy (créé manuellement post-deploy)
+vault_ntfy_admin_user: "CHANGE_ME"            # Nom d'utilisateur Ntfy admin (ex: lucas)
+vault_ntfy_auth_token: "CHANGE_ME"            # Token Bearer Ntfy : openssl rand -hex 32
 vault_netbird_datastore_key: "CHANGE_ME"      # openssl rand -base64 32
 vault_netbird_relay_secret: "CHANGE_ME"       # openssl rand -hex 32
 vault_bientot_token_vps: "CHANGE_ME"          # openssl rand -hex 32
@@ -27,19 +28,13 @@ vault_bientot_token_vps: "CHANGE_ME"          # openssl rand -hex 32
 backbone_dir: "/opt/backbone"                 # Stack L3 (Traefik + NetBird server)
 stack_dir: "/opt/sentinel"                    # Stack L4 (CrowdSec, Ntfy, node-exporter)
 
-# Feature flags alerting
-alerting_check_disk: true
-alerting_check_ram: true
-alerting_check_cpu: true
-alerting_check_docker: true
-alerting_check_backup_vps: false              # Pas de backup sur le VPS
-alerting_check_backup_usb: false
-alerting_check_zfs: false
+# Alerting géré par Bientôt (modules agent + config/alerts.yml)
+# Les feature flags alerting_check_* ont été supprimés.
 
 # CrowdSec bouncer tuning
 crowdsec_bouncer_update_freq: "10s"           # Fréquence sync bouncer ↔ LAPI
 
-# Trivy → Bientôt (scan CVE dans le dashboard)
-trivy_bientot_url: "http://{{ vault_pi_netbird_ip }}:{{ bientot_agent_port }}"
-trivy_bientot_token: "{{ vault_bientot_token_vps }}"
-trivy_bientot_machine_id: "sentinelle"        # Identifiant machine dans Bientôt
+# Scan CVE → Bientôt (Grype, remplace Trivy compromis mars 2026)
+scan_bientot_url: "http://{{ vault_pi_netbird_ip }}:{{ bientot_agent_port }}"
+scan_bientot_token: "{{ vault_bientot_token_vps }}"
+scan_bientot_machine_id: "sentinelle"         # Identifiant machine dans Bientôt

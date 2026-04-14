@@ -1,12 +1,12 @@
 ---
 - name: Reload nftables
-  systemd:
+  ansible.builtin.systemd:
     name: nftables
     state: reloaded
   notify: Restart CrowdSec bouncer after nftables reload
 
 - name: Restart CrowdSec bouncer after nftables reload
-  shell: >
+  ansible.builtin.shell: >
     test -f /usr/bin/crowdsec-firewall-bouncer &&
     systemctl restart crowdsec-firewall-bouncer || true
   changed_when: false

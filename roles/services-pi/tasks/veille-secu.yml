@@ -1,7 +1,7 @@
 # Veille sécu — image GHCR (plus de git clone + build)
 ---
 - name: Créer le répertoire veille-secu
-  file:
+  ansible.builtin.file:
     path: "{{ pi_stack_dir }}/veille-secu"
     state: directory
     owner: "{{ vault_pi_ssh_user }}"
@@ -10,7 +10,7 @@
 
 # Vérifier la signature cosign AVANT le pull (supply chain)
 - name: Vérifier la signature de l'image veille-secu
-  command: >
+  ansible.builtin.command: >
     /usr/local/bin/cosign verify
     --certificate-identity-regexp="https://github.com/ldesfontaine/.*"
     --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
@@ -19,16 +19,16 @@
   when: not ansible_check_mode
 
 - name: Pull de l'image veille-secu
-  shell: "cd {{ pi_stack_dir }} && docker compose pull veille-secu"
+  ansible.builtin.shell: "cd {{ pi_stack_dir }} && docker compose pull veille-secu"
   changed_when: false
 
 - name: Lancement de veille-secu
-  shell: "cd {{ pi_stack_dir }} && docker compose up -d veille-secu"
+  ansible.builtin.shell: "cd {{ pi_stack_dir }} && docker compose up -d veille-secu"
   register: _veille_secu_up
   changed_when: "'Started' in _veille_secu_up.stderr or 'Created' in _veille_secu_up.stderr"
 
 - name: Attendre que veille-secu soit opérationnel
-  uri:
+  ansible.builtin.uri:
     url: "http://{{ netbird_bind_ip }}:{{ veille_secu_web_port }}"
     status_code: [200, 301, 302]
   register: _veille_secu_health

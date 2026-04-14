@@ -27,7 +27,7 @@
 # Etape 1 : Determiner les variables source selon le groupe
 # ------------------------------------------------------------------
 - name: "Connection Resolver : Identifier les parametres de connexion"
-  set_fact:
+  ansible.builtin.set_fact:
     _cr_target_user: "{{ vault_ssh_user if 'dmz' in group_names else vault_pi_ssh_user }}"
     _cr_hardened_port: "{{ vault_ssh_port if 'dmz' in group_names else vault_pi_ssh_port }}"
     _cr_lan_ip: "{{ vault_pi_ip | default(omit) }}"
@@ -39,7 +39,7 @@
 # Etape 2 (DMZ uniquement) : Detecter si on tourne sur le VPS
 # ------------------------------------------------------------------
 - name: "Connection Resolver : Tester si Ansible tourne sur le VPS"
-  command: cat /etc/hostname
+  ansible.builtin.command: cat /etc/hostname
   register: _cr_local_hostname
   changed_when: false
   failed_when: false
@@ -52,7 +52,7 @@
   tags: [always]
 
 - name: "Connection Resolver : Determiner le mode de connexion VPS"
-  set_fact:
+  ansible.builtin.set_fact:
     resolved_connection: >-
       {{ 'local'
          if (_cr_is_dmz | bool and
@@ -65,8 +65,8 @@
 # Etape 3 (LAN uniquement) : Cascade de route vers le Pi
 # IP LAN d'abord, fallback sur IP NetBird
 # ------------------------------------------------------------------
-- name: "Connection Resolver : Tester la joignabilite LAN port durci ({{ _cr_lan_ip | default('N/A') }}:{{ _cr_hardened_port }})"
-  wait_for:
+- name: "Connection Resolver : Tester la joignabilite LAN port durci — {{ _cr_lan_ip | default('N/A') }}"
+  ansible.builtin.wait_for:
     host: "{{ _cr_lan_ip }}"
     port: "{{ _cr_hardened_port }}"
     timeout: 3
@@ -75,7 +75,7 @@
     ansible_connection: local
   become: false
   check_mode: false
-  ignore_errors: true
+  failed_when: false
   register: _cr_lan_hardened
   when:
     - not (_cr_is_dmz | bool)
@@ -83,8 +83,8 @@
     - _cr_lan_ip not in ['CHANGE_ME', omit]
   tags: [always]
 
-- name: "Connection Resolver : Tester la joignabilite LAN port 22 ({{ _cr_lan_ip | default('N/A') }}:22)"
-  wait_for:
+- name: "Connection Resolver : Tester la joignabilite LAN port 22 — {{ _cr_lan_ip | default('N/A') }}"
+  ansible.builtin.wait_for:
     host: "{{ _cr_lan_ip }}"
     port: 22
     timeout: 3
@@ -93,7 +93,7 @@
     ansible_connection: local
   become: false
   check_mode: false
-  ignore_errors: true
+  failed_when: false
   register: _cr_lan_fallback
   when:
     - not (_cr_is_dmz | bool)
@@ -103,15 +103,15 @@
   tags: [always]
 
 - name: "Connection Resolver : Consolider le resultat LAN"
-  set_fact:
+  ansible.builtin.set_fact:
     _cr_lan_reachable: "{{ _cr_lan_hardened if (_cr_lan_hardened is not skipped and _cr_lan_hardened is not failed) else _cr_lan_fallback }}"
     _cr_lan_port: "{{ _cr_hardened_port if (_cr_lan_hardened is not skipped and _cr_lan_hardened is not failed) else '22' }}"
   when:
     - not (_cr_is_dmz | bool)
   tags: [always]
 
-- name: "Connection Resolver : Tester la joignabilite NetBird port durci ({{ _cr_netbird_ip }}:{{ _cr_hardened_port }})"
-  wait_for:
+- name: "Connection Resolver : Tester la joignabilite NetBird port durci — {{ _cr_netbird_ip }}"
+  ansible.builtin.wait_for:
     host: "{{ _cr_netbird_ip }}"
     port: "{{ _cr_hardened_port }}"
     timeout: 3
@@ -120,7 +120,7 @@
     ansible_connection: local
   become: false
   check_mode: false
-  ignore_errors: true
+  failed_when: false
   register: _cr_netbird_hardened
   when:
     - not (_cr_is_dmz | bool)
@@ -128,8 +128,8 @@
     - _cr_netbird_ip not in ['CHANGE_ME', 'REMPLACER_APRES_ENROLEMENT_NETBIRD']
   tags: [always]
 
-- name: "Connection Resolver : Tester la joignabilite NetBird port 22 ({{ _cr_netbird_ip }}:22)"
-  wait_for:
+- name: "Connection Resolver : Tester la joignabilite NetBird port 22 — {{ _cr_netbird_ip }}"
+  ansible.builtin.wait_for:
     host: "{{ _cr_netbird_ip }}"
     port: 22
     timeout: 3
@@ -138,7 +138,7 @@
     ansible_connection: local
   become: false
   check_mode: false
-  ignore_errors: true
+  failed_when: false
   register: _cr_netbird_fallback
   when:
     - not (_cr_is_dmz | bool)
@@ -147,31 +147,49 @@
     - _cr_netbird_ip not in ['CHANGE_ME', 'REMPLACER_APRES_ENROLEMENT_NETBIRD']
   tags: [always]
 
-- name: "Connection Resolver : Consolider le resultat NetBird"
-  set_fact:
-    _cr_netbird_reachable: "{{ _cr_netbird_hardened if (_cr_netbird_hardened is not skipped and _cr_netbird_hardened is not failed) else _cr_netbird_fallback }}"
-    _cr_netbird_port: "{{ _cr_hardened_port if (_cr_netbird_hardened is not skipped and _cr_netbird_hardened is not failed) else '22' }}"
+- name: "Connection Resolver : Consolider le resultat NetBird" # noqa: yaml[line-length]
+  ansible.builtin.set_fact:
+    _cr_netbird_reachable: >-
+      {{ _cr_netbird_hardened
+      if (_cr_netbird_hardened is not skipped and _cr_netbird_hardened is not failed)
+      else _cr_netbird_fallback }}
+    _cr_netbird_port: >-
+      {{ _cr_hardened_port
+      if (_cr_netbird_hardened is not skipped and _cr_netbird_hardened is not failed)
+      else '22' }}
   when:
     - not (_cr_is_dmz | bool)
     - _cr_lan_reachable is skipped or _cr_lan_reachable is failed
   tags: [always]
 
-- name: "Connection Resolver : Determiner la route et connexion Pi"
-  set_fact:
+- name: "Connection Resolver : Determiner la route et connexion Pi" # noqa: yaml[line-length]
+  ansible.builtin.set_fact:
     resolved_host: >-
-      {% if _cr_lan_reachable is defined and _cr_lan_reachable is not skipped and _cr_lan_reachable is not failed %}{{ _cr_lan_ip }}{% elif _cr_netbird_reachable is defined and _cr_netbird_reachable is not skipped and _cr_netbird_reachable is not failed %}{{ _cr_netbird_ip }}{% else %}UNREACHABLE{% endif %}
+      {% if _cr_lan_reachable is defined and _cr_lan_reachable is not skipped
+      and _cr_lan_reachable is not failed %}{{ _cr_lan_ip
+      }}{% elif _cr_netbird_reachable is defined and _cr_netbird_reachable is not skipped
+      and _cr_netbird_reachable is not failed %}{{ _cr_netbird_ip
+      }}{% else %}UNREACHABLE{% endif %}
     _cr_route_port: >-
-      {% if _cr_lan_reachable is defined and _cr_lan_reachable is not skipped and _cr_lan_reachable is not failed %}{{ _cr_lan_port | default(_cr_hardened_port) }}{% elif _cr_netbird_reachable is defined and _cr_netbird_reachable is not skipped and _cr_netbird_reachable is not failed %}{{ _cr_netbird_port | default(_cr_hardened_port) }}{% else %}22{% endif %}
+      {% if _cr_lan_reachable is defined and _cr_lan_reachable is not skipped
+      and _cr_lan_reachable is not failed %}{{ _cr_lan_port | default(_cr_hardened_port)
+      }}{% elif _cr_netbird_reachable is defined and _cr_netbird_reachable is not skipped
+      and _cr_netbird_reachable is not failed %}{{ _cr_netbird_port | default(_cr_hardened_port)
+      }}{% else %}22{% endif %}
     resolved_connection: "ssh"
   when: not (_cr_is_dmz | bool)
   tags: [always]
 
-- name: "Connection Resolver : ECHEC — Pi injoignable"
-  fail:
+- name: "Connection Resolver : ECHEC — Pi injoignable" # noqa: yaml[line-length]
+  ansible.builtin.fail:
     msg: >
       Pi injoignable sur tous les chemins.
-      LAN ({{ _cr_lan_ip | default('non defini') }}) : {{ 'skipped' if (_cr_lan_reachable is skipped) else ('OK' if (_cr_lan_reachable is not failed) else 'ECHEC') }}
-      NetBird ({{ _cr_netbird_ip }}) : {{ 'skipped' if (_cr_netbird_reachable is skipped) else ('OK' if (_cr_netbird_reachable is not failed) else 'ECHEC') }}
+      LAN ({{ _cr_lan_ip | default('non defini') }}) :
+      {{ 'skipped' if (_cr_lan_reachable is skipped)
+      else ('OK' if (_cr_lan_reachable is not failed) else 'ECHEC') }}
+      NetBird ({{ _cr_netbird_ip }}) :
+      {{ 'skipped' if (_cr_netbird_reachable is skipped)
+      else ('OK' if (_cr_netbird_reachable is not failed) else 'ECHEC') }}
       Verifier l'enrollment NetBird ou la connectivite LAN.
   when:
     - not (_cr_is_dmz | bool)
@@ -182,13 +200,13 @@
 # Etape 4 : Cascade de detection du port SSH (durci → 22)
 # ------------------------------------------------------------------
 - name: "Connection Resolver : Determiner le host cible pour le test SSH"
-  set_fact:
+  ansible.builtin.set_fact:
     _cr_ssh_test_host: >-
       {{ ansible_host if (_cr_is_dmz | bool) else resolved_host }}
   tags: [always]
 
 - name: "Connection Resolver : Tester le port SSH durci ({{ _cr_hardened_port }})"
-  wait_for:
+  ansible.builtin.wait_for:
     host: "{{ _cr_ssh_test_host }}"
     port: "{{ _cr_hardened_port }}"
     timeout: 5
@@ -197,19 +215,23 @@
     ansible_connection: local
   become: false
   check_mode: false
-  ignore_errors: true
+  failed_when: false
   register: _cr_hardened_port_check
   when: resolved_connection != 'local'
   tags: [always]
 
-- name: "Connection Resolver : Determiner le port SSH actif"
-  set_fact:
+- name: "Connection Resolver : Determiner le port SSH actif" # noqa: yaml[line-length]
+  ansible.builtin.set_fact:
     resolved_port: >-
-      {% if not (_cr_is_dmz | bool) %}{{ _cr_route_port | default('22') }}{% elif resolved_connection == 'local' or (_cr_hardened_port_check is not skipped and _cr_hardened_port_check is not failed) %}{{ _cr_hardened_port }}{% else %}22{% endif %}
+      {% if not (_cr_is_dmz | bool) %}{{ _cr_route_port | default('22')
+      }}{% elif resolved_connection == 'local'
+      or (_cr_hardened_port_check is not skipped
+      and _cr_hardened_port_check is not failed) %}{{ _cr_hardened_port
+      }}{% else %}22{% endif %}
   tags: [always]
 
 - name: "Connection Resolver : Determiner le user SSH"
-  set_fact:
+  ansible.builtin.set_fact:
     resolved_user: "{{ _cr_target_user }}"
   tags: [always]
 
@@ -217,7 +239,7 @@
 # Etape 5 : Appliquer les facts resolus a la connexion Ansible
 # ------------------------------------------------------------------
 - name: "Connection Resolver : Appliquer la connexion resolue"
-  set_fact:
+  ansible.builtin.set_fact:
     ansible_connection: "{{ resolved_connection }}"
     ansible_port: "{{ resolved_port }}"
     ansible_user: "{{ resolved_user }}"
@@ -225,7 +247,7 @@
   tags: [always]
 
 - name: "Connection Resolver : Appliquer le host resolu (Pi)"
-  set_fact:
+  ansible.builtin.set_fact:
     ansible_host: "{{ resolved_host }}"
   when: not (_cr_is_dmz | bool)
   tags: [always]
@@ -234,14 +256,14 @@
 # Etape 6 : Gather facts maintenant que la connexion est resolue
 # ------------------------------------------------------------------
 - name: "Connection Resolver : Gather facts avec la connexion resolue"
-  setup:
+  ansible.builtin.setup:
   tags: [always]
 
 # ------------------------------------------------------------------
 # Etape 7 : Resume de la resolution
 # ------------------------------------------------------------------
 - name: "Connection Resolver : Resume"
-  debug:
+  ansible.builtin.debug:
     msg: >
       {{ inventory_hostname }} — connection={{ resolved_connection }}
       host={{ ansible_host }} port={{ resolved_port }}

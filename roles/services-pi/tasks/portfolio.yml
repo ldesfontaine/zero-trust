@@ -2,7 +2,7 @@
 ---
 # Vérifier la signature cosign AVANT le pull (supply chain)
 - name: Vérifier la signature de l'image portfolio
-  command: >
+  ansible.builtin.command: >
     /usr/local/bin/cosign verify
     --certificate-identity-regexp="https://github.com/ldesfontaine/.*"
     --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
@@ -11,10 +11,10 @@
   when: not ansible_check_mode
 
 - name: Pull de l'image Portfolio
-  shell: "cd {{ pi_stack_dir }} && docker compose pull portfolio"
+  ansible.builtin.shell: "cd {{ pi_stack_dir }} && docker compose pull portfolio"
   changed_when: false
 
 - name: Lancement de Portfolio
-  shell: "cd {{ pi_stack_dir }} && docker compose up -d portfolio"
+  ansible.builtin.shell: "cd {{ pi_stack_dir }} && docker compose up -d portfolio"
   register: _portfolio_up
   changed_when: "'Started' in _portfolio_up.stderr or 'Created' in _portfolio_up.stderr"

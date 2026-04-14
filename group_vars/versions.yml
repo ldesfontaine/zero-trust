@@ -1,0 +1,35 @@
+# ============================================================================
+# Versions des images Docker — PAS DE SECRETS ICI
+# Ce fichier est en clair pour permettre l'édition depuis GitHub UI.
+# Les secrets restent dans all.yml (chiffré).
+# ============================================================================
+
+# --- Images tierces ---
+traefik_version: "v3.1"
+crowdsec_version: "v1.6.8"
+ntfy_version: "v2.11.0"
+node_exporter_version: "v1.9.0"
+docker_socket_proxy_version: "0.2.0"
+netbird_server_version: "0.36.5"
+netbird_dashboard_version: "2.9.0"
+mariadb_version: "11"
+seafile_version: "11.0-latest"
+memcached_version: "1.6"
+vaultwarden_version: "1.32.1"
+adguard_version: "v0.107.55"
+immich_version: "v1.134.0"
+immich_redis_version: "7-alpine"
+immich_db_image: "ghcr.io/immich-app/postgres"
+immich_db_version: "14-vectorchord0.3.0-pgvectors0.2.0"
+
+# --- Projets perso (GHCR) ---
+portfolio_image: "ghcr.io/ldesfontaine/termfolio"
+portfolio_version: "0.0.1"
+bientot_server_image: "ghcr.io/ldesfontaine/bientot-server"
+bientot_server_version: "0.0.1"
+bientot_agent_image: "ghcr.io/ldesfontaine/bientot-agent"
+bientot_agent_version: "0.0.1"
+veille_secu_image: "ghcr.io/ldesfontaine/vielle-technologique"
+veille_secu_version: "0.0.1"
+bentopdf_image: "ghcr.io/alam00000/bentopdf"
+bentopdf_version: "sha-latest"                # TODO: épingler sur un tag stable

@@ -38,16 +38,8 @@ pi_stack_dir: "/mnt/tank/stack"               # Racine des données sur le pool 
 vault_immich_db_user: "immich"
 vault_immich_db_name: "immich"
 
-# Feature flags alerting
-alerting_check_disk: true
-alerting_check_ram: true
-alerting_check_cpu: true
-alerting_check_docker: true
-alerting_check_backup_vps: true               # Le Pi fait le backup → activer le check
-alerting_check_backup_usb: true               # Alerte si USB pas branché depuis X jours
-alerting_check_zfs: true                      # Le Pi a le ZFS → activer le check
-alerting_check_zfs_snapshot: true             # Alerte si dernier snapshot hourly > 2h
-alert_zfs_snapshot_stale_hours: 2             # Seuil : heures depuis dernier snapshot hourly
+# Alerting géré par Bientôt (modules agent + config/alerts.yml)
+# Les feature flags alerting_check_* ont été supprimés.
 backup_vps_enabled: true                      # Backup GPG quotidien vers VPS
 
 # Backup VPS — cron
@@ -63,7 +55,7 @@ adguard_session_ttl: "720h"                   # Session admin (30 jours)
 # Memcached (Seafile)
 memcached_memory_mb: 256                      # RAM allouée (Mo)
 
-# Trivy → Bientôt (scan CVE dans le dashboard)
-trivy_bientot_url: "http://{{ vault_pi_netbird_ip }}:{{ bientot_agent_port }}"
-trivy_bientot_token: "{{ vault_bientot_token_pi }}"
-trivy_bientot_machine_id: "cerveau"           # Identifiant machine dans Bientôt
+# Scan CVE → Bientôt (Grype, remplace Trivy compromis mars 2026)
+scan_bientot_url: "http://{{ vault_pi_netbird_ip }}:{{ bientot_agent_port }}"
+scan_bientot_token: "{{ vault_bientot_token_pi }}"
+scan_bientot_machine_id: "cerveau"            # Identifiant machine dans Bientôt

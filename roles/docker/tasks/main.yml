@@ -3,32 +3,32 @@
 # Compatible amd64 (VPS) et arm64 (Pi)
 # Doc : https://docs.docker.com/engine/install/
 # ============================================================================
- 
+
 - name: Installer les prérequis Docker
-  apt:
+  ansible.builtin.apt:
     name:
       - ca-certificates
       - curl
       - gnupg
     state: present
- 
+
 - name: Créer le répertoire keyrings
-  file:
+  ansible.builtin.file:
     path: /etc/apt/keyrings
     state: directory
     mode: '0755'
- 
-- name: Ajouter la clé GPG Docker
-  shell: |
+
+- name: Ajouter la clé GPG Docker # noqa: risky-shell-pipe command-instead-of-module
+  ansible.builtin.shell: |
     curl -fsSL https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg | \
     gpg --dearmor -o /etc/apt/keyrings/docker.gpg
   args:
     creates: /etc/apt/keyrings/docker.gpg
- 
+
 # ansible_architecture peut mentir (x86_64 sur une machine arm64).
 # dpkg --print-architecture est la source de vérité pour les repos apt.
-- name: Déterminer l'architecture dpkg (source de vérité pour les repos apt)
-  command: dpkg --print-architecture
+- name: Déterminer l'architecture dpkg (source de vérité pour les repos apt) # noqa: var-naming[no-role-prefix]
+  ansible.builtin.command: dpkg --print-architecture
   register: _dpkg_arch
   changed_when: false
   check_mode: false
@@ -37,37 +37,37 @@
 # trixie (Debian 13 testing) et sid (unstable) ne sont pas encore supportés.
 # → fallback sur bookworm (dernière stable Debian) pour ces codenames.
 - name: Déterminer le codename Docker (fallback bookworm pour trixie/sid)
-  set_fact:
+  ansible.builtin.set_fact:
     docker_apt_arch: "{{ _dpkg_arch.stdout }}"
     docker_apt_codename: "{{ 'bookworm' if ansible_distribution_release in ['trixie', 'sid'] else ansible_distribution_release }}"
 
 - name: Ajouter le dépôt Docker
-  copy:
-    content: |
-      deb [arch={{ docker_apt_arch }} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/{{ ansible_distribution | lower }} {{ docker_apt_codename }} stable
+  ansible.builtin.copy:
+    # yamllint disable-line rule:line-length
+    content: "deb [arch={{ docker_apt_arch }} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/{{ ansible_distribution | lower }} {{ docker_apt_codename }} stable\n"
     dest: /etc/apt/sources.list.d/docker.list
     mode: '0644'
- 
+
 # En check mode, copy n'écrit pas réellement docker.list → apt update inutile
 # et docker-ce introuvable. Ces deux tasks sont skip en check si le repo
 # vient d'être ajouté dans ce run.
 - name: Mettre à jour le cache apt après ajout du dépôt Docker
-  apt:
-    update_cache: yes
+  ansible.builtin.apt:
+    update_cache: true
   when: not ansible_check_mode
 
 - name: Installer Docker Engine (dernière version stable)
-  apt:
+  ansible.builtin.apt:
     name:
       - docker-ce
       - docker-ce-cli
       - containerd.io
       - docker-compose-plugin
-    state: latest
+    state: present
   when: not ansible_check_mode
- 
+
 - name: Configurer Docker (VPS — DNS explicites, iptables-nft cohabite avec nftables)
-  copy:
+  ansible.builtin.copy:
     content: |
       {
         "dns": ["1.1.1.1", "8.8.8.8"],
@@ -80,7 +80,7 @@
   notify: Redémarrer Docker
 
 - name: Configurer Docker (Pi — DNS AdGuard + iptables desactive pour defense en profondeur UFW)
-  copy:
+  ansible.builtin.copy:
     content: |
       {
         "dns": ["{{ vault_pi_ip }}", "1.1.1.1"],
@@ -97,32 +97,32 @@
 # n'existent pas encore → ces tasks en check mode provoqueraient des erreurs.
 # On vérifie si docker est présent avant de s'y accrocher.
 - name: Vérifier si Docker est déjà installé
-  command: which docker
+  ansible.builtin.command: which docker
   register: _docker_present
   failed_when: false
   changed_when: false
   check_mode: false
 
 - name: Démarrer et activer Docker
-  systemd:
+  ansible.builtin.systemd:
     name: docker
     state: started
-    enabled: yes
+    enabled: true
   when: not ansible_check_mode or _docker_present.rc == 0
 
 - name: Ajouter l'utilisateur admin au groupe docker
-  user:
+  ansible.builtin.user:
     name: "{{ ansible_user }}"
     groups: docker
-    append: yes
+    append: true
   register: _docker_group_admin
   when: not ansible_check_mode or _docker_present.rc == 0
 
 - name: Ajouter l'utilisateur deploy au groupe docker
-  user:
+  ansible.builtin.user:
     name: "{{ vault_deploy_user }}"
     groups: docker
-    append: yes
+    append: true
   when: (vault_deploy_user is defined) and (not ansible_check_mode or _docker_present.rc == 0)
   register: _docker_group_deploy
 

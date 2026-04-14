@@ -1,4 +1,9 @@
 ---
+galaxy_info:
+  author: "ldesfontaine"
+  description: "netbird-client"
+  license: "proprietary"
+  min_ansible_version: "2.14"
 # docker est un prérequis mais géré par l'ordre des rôles dans le playbook.
 # Ne PAS le déclarer ici : double exécution → meta: reset_connection tue SSH.
 dependencies: []

@@ -13,13 +13,17 @@
 ---
 
 # Infrastructure partagée (compose + acquis.yaml) — toujours exécutée
-- import_tasks: _compose.yml
+- name: "Services VPS : Deployer l'infrastructure compose"
+  ansible.builtin.import_tasks: _compose.yml
   tags: [always]
 
 # Services individuels — filtrés par tags
-- import_tasks: crowdsec.yml
+- name: "Services VPS : Configurer CrowdSec + bouncer"
+  ansible.builtin.import_tasks: crowdsec.yml
   tags: [crowdsec]
-- import_tasks: ntfy.yml
+- name: "Services VPS : Configurer Ntfy"
+  ansible.builtin.import_tasks: ntfy.yml
   tags: [ntfy]
-- import_tasks: node-exporter.yml
+- name: "Services VPS : Configurer node-exporter"
+  ansible.builtin.import_tasks: node-exporter.yml
   tags: [node-exporter-vps]

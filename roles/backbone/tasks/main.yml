@@ -15,7 +15,7 @@
 
 # -- Arborescence backbone ---------------------------------------------------
 - name: Créer les dossiers backbone
-  file:
+  ansible.builtin.file:
     path: "{{ item }}"
     state: directory
     owner: "{{ vault_ssh_user }}"
@@ -30,13 +30,13 @@
     - "{{ backbone_dir }}/netbird/data"
 
 # -- Migration volumes (VPS existant uniquement) -----------------------------
-- name: Vérifier si l'ancien acme.json existe dans /opt/stack
-  stat:
+- name: Vérifier si l'ancien acme.json existe dans /opt/stack # noqa: var-naming[no-role-prefix]
+  ansible.builtin.stat:
     path: "/opt/stack/traefik/acme.json"
   register: old_acme_json
 
 - name: Sauvegarder acme.json depuis l'ancienne stack
-  copy:
+  ansible.builtin.copy:
     src: "/opt/stack/traefik/acme.json"
     dest: "{{ backbone_dir }}/traefik/acme.json.migrated"
     remote_src: true
@@ -44,24 +44,25 @@
     mode: '0600'
   when: old_acme_json.stat.exists
 
-- name: Vérifier si les anciennes données NetBird existent
-  stat:
+- name: Vérifier si les anciennes données NetBird existent # noqa: var-naming[no-role-prefix]
+  ansible.builtin.stat:
     path: "/opt/stack/netbird/data"
   register: old_netbird_data
 
-- name: Vérifier si la migration NetBird a déjà été faite
-  stat:
+- name: Vérifier si la migration NetBird a déjà été faite # noqa: var-naming[no-role-prefix]
+  ansible.builtin.stat:
     path: "{{ backbone_dir }}/netbird/data/.migrated"
   register: netbird_migration_done
 
 - name: Migrer les données NetBird depuis l'ancienne stack
-  shell: "cp -a /opt/stack/netbird/data/* {{ backbone_dir }}/netbird/data/ && touch {{ backbone_dir }}/netbird/data/.migrated"
+  ansible.builtin.shell: "cp -a /opt/stack/netbird/data/* {{ backbone_dir }}/netbird/data/ && touch {{ backbone_dir }}/netbird/data/.migrated"
+  changed_when: false
   when:
     - old_netbird_data.stat.exists and old_netbird_data.stat.isdir
     - not netbird_migration_done.stat.exists
 
 - name: Corriger les permissions des données migrées
-  file:
+  ansible.builtin.file:
     path: "{{ backbone_dir }}/netbird/data"
     owner: "{{ vault_ssh_user }}"
     group: "{{ vault_ssh_user }}"
@@ -70,15 +71,15 @@
 
 # -- Templates ---------------------------------------------------------------
 - name: Déployer la config dynamique Traefik (services Pi)
-  template:
+  ansible.builtin.template:
     src: "traefik-services.yml.j2"
     dest: "{{ backbone_dir }}/traefik/dynamic/pi-public.yml"
     owner: "{{ vault_ssh_user }}"
     mode: '0644'
   notify: Reload Backbone Stack
 
-- name: Déployer la config NetBird server
-  template:
+- name: Déployer la config NetBird server # noqa: var-naming[no-role-prefix]
+  ansible.builtin.template:
     src: "netbird_config_yaml.j2"
     dest: "{{ backbone_dir }}/netbird_config.yaml"
     owner: "{{ vault_ssh_user }}"
@@ -86,8 +87,8 @@
   register: _nb_config
   notify: Reload Backbone Stack
 
-- name: Déployer le docker-compose backbone (Traefik + NetBird)
-  template:
+- name: Déployer le docker-compose backbone (Traefik + NetBird) # noqa: var-naming[no-role-prefix]
+  ansible.builtin.template:
     src: "docker-compose.backbone.yml.j2"
     dest: "{{ backbone_dir }}/docker-compose.yml"
     owner: "{{ vault_ssh_user }}"
@@ -97,13 +98,13 @@
 
 # -- Lancement ---------------------------------------------------------------
 - name: Vérifier l'état actuel des containers backbone
-  shell: "cd {{ backbone_dir }} && docker compose ps --format json"
+  ansible.builtin.shell: "cd {{ backbone_dir }} && docker compose ps --format json"
   register: _backbone_ps
   changed_when: false
   check_mode: false
 
 - name: Lancer la stack backbone (Traefik + NetBird)
-  shell: "cd {{ backbone_dir }} && docker compose up -d --remove-orphans"
+  ansible.builtin.shell: "cd {{ backbone_dir }} && docker compose up -d --remove-orphans"
   register: _backbone_up
   changed_when: >-
     'Started' in _backbone_up.stderr
@@ -115,8 +116,8 @@
     or _nb_config is changed
 
 # -- Validation NetBird ------------------------------------------------------
-- name: Valider l'API management NetBird (local, sans TLS)
-  uri:
+- name: Valider l'API management NetBird (local, sans TLS) # noqa: var-naming[no-role-prefix]
+  ansible.builtin.uri:
     url: "http://127.0.0.1:33080/api/accounts"
     status_code: [200, 401, 403]
   register: netbird_api_check
@@ -127,7 +128,7 @@
   when: not ansible_check_mode
 
 - name: Échec si NetBird management API injoignable
-  fail:
+  ansible.builtin.fail:
     msg: >
       NetBird management API injoignable sur http://127.0.0.1:33080/api/accounts
       après 10 tentatives. Vérifier : docker logs netbird-server

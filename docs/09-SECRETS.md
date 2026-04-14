@@ -1,5 +1,13 @@
 # 09 — Gestion des secrets
 
+## Versions ≠ secrets
+
+Les versions d'images ne sont PAS des secrets.
+Elles sont dans `group_vars/versions.yml` (non chiffré) pour permettre
+l'édition depuis GitHub UI sans accès au vault password.
+
+---
+
 ## Chaîne de dépendances
 
 ```
@@ -31,7 +39,7 @@ Clé SSH Ed25519 → accès machines → nécessaire pour Ansible ET backup SCP
 | `vault_bientot_token_vps` | `sentinel-bientot.env`, `bientot-server.env` | bientot-agent VPS → bientot-server | Régénérer, redémarrer agent VPS + serveur |
 | `vault_bientot_token_pi` | `bientot-agent-pi.env`, `bientot-server.env` | bientot-agent Pi → bientot-server | Régénérer, redémarrer agent Pi + serveur |
 | `vault_veille_token` | `veille.env`, `bientot-server.env` | bientot-server → veille-secu API | Régénérer, redémarrer bientot-server + veille-secu |
-| `vault_ntfy_auth_token` | `sentinel-bientot.env`, `bientot-server.env`, `veille.env`, health-check.sh, backup-vps.sh | Tous les scripts d'alerte + services | Recréer user ntfy CLI, redémarrer TOUT |
+| `vault_ntfy_auth_token` | `sentinel-bientot.env`, `bientot-server.env`, `veille.env`, docker-image-maintenance.sh, backup-vps.sh | Tous les scripts d'alerte + services | Recréer user ntfy CLI, redémarrer TOUT |
 | `vault_crowdsec_lapi_key` | `sentinel.env` | crowdsec-firewall-bouncer | Régénérer + `cscli bouncers add` |
 | `vault_crowdsec_bientot_key` | `sentinel-bientot.env` | bientot-agent VPS → CrowdSec API | Régénérer + `cscli bouncers add` |
 
@@ -95,10 +103,10 @@ ssh vps 'docker exec ntfy ntfy token add --token "${NEW_TOKEN}" alerts'
 # 3. Mettre à jour ansible-vault
 ansible-vault edit host_vars/vps_serv.yml    # vault_ntfy_auth_token
 
-# 4. Redéployer TOUT (health-check, backup, bientot, veille-secu)
+# 4. Redéployer TOUT (monitoring, backup, bientot, veille-secu)
 ansible-playbook -i inventory.ini playbooks/services.yml --ask-vault-pass
 
-# Services redémarrés : bientot-server, veille-secu, health-check cron, backup cron
+# Services redémarrés : bientot-server, veille-secu, monitoring cron, backup cron
 ```
 
 ### Rotation CrowdSec LAPI key (vault_crowdsec_lapi_key)

@@ -2,7 +2,7 @@
 # Tagué [always] dans main.yml : s'exécute quel que soit le tag service demandé.
 ---
 - name: Création du dossier racine stack Pi
-  file:
+  ansible.builtin.file:
     path: "{{ pi_stack_dir }}"
     state: directory
     owner: "{{ vault_pi_ssh_user }}"
@@ -10,7 +10,7 @@
     mode: '0755'
 
 - name: Déployer le fichier .env principal (secrets vault — mode 0600)
-  template:
+  ansible.builtin.template:
     src: brain.env.j2
     dest: "{{ pi_stack_dir }}/.env"
     owner: "{{ vault_pi_ssh_user }}"
@@ -18,7 +18,7 @@
   notify: Reload Docker Stack Pi
 
 - name: Déployer le fichier bientot-server.env (secrets vault — mode 0600)
-  template:
+  ansible.builtin.template:
     src: bientot-server.env.j2
     dest: "{{ pi_stack_dir }}/bientot-server.env"
     owner: "{{ vault_pi_ssh_user }}"
@@ -26,7 +26,7 @@
   notify: Reload Docker Stack Pi
 
 - name: Déployer le fichier bientot-agent-pi.env (secrets vault — mode 0600)
-  template:
+  ansible.builtin.template:
     src: bientot-agent-pi.env.j2
     dest: "{{ pi_stack_dir }}/bientot-agent-pi.env"
     owner: "{{ vault_pi_ssh_user }}"
@@ -34,7 +34,7 @@
   notify: Reload Docker Stack Pi
 
 - name: Déployer le fichier veille.env (secrets vault — mode 0600)
-  template:
+  ansible.builtin.template:
     src: veille.env.j2
     dest: "{{ pi_stack_dir }}/veille.env"
     owner: "{{ vault_pi_ssh_user }}"
@@ -42,15 +42,15 @@
   notify: Reload Docker Stack Pi
 
 - name: Déploiement du docker-compose Pi
-  template:
+  ansible.builtin.template:
     src: docker-compose_pi_yml.j2
     dest: "{{ pi_stack_dir }}/docker-compose.yml"
     owner: "{{ vault_pi_ssh_user }}"
     mode: '0644'
   notify: Reload Docker Stack Pi
 
-- name: Attendre l'interface NetBird (IP {{ host_netbird_ip }})
-  shell: ip addr show | grep -q "{{ host_netbird_ip }}"
+- name: Attendre l'interface NetBird (IP {{ host_netbird_ip }}) # noqa: risky-shell-pipe
+  ansible.builtin.shell: ip addr show | grep -q "{{ host_netbird_ip }}"
   register: nb_iface_check
   retries: 30
   delay: 2

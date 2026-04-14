@@ -1,4 +1,6 @@
 galaxy_info:
-  description: "Monitoring — health checks, Trivy scan, maintenance images Docker"
+  author: "ldesfontaine"
+  description: "Monitoring — scan CVE Grype, maintenance images Docker"
+  license: "proprietary"
   min_ansible_version: "2.14"
 allow_duplicates: false

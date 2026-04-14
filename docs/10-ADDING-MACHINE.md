@@ -132,5 +132,5 @@ ansible-playbook playbooks/mesh-config.yml --ask-vault-pass
 □ mesh-config — peer dans le bon groupe, ACLs si besoin
 □ Bientôt agent — container + token si la machine est monitorée
 □ services — rôle créé ou existant étendu si containers
-□ monitoring — health-check déployé sur la machine
+□ monitoring — Grype + maintenance Docker déployés sur la machine
 ```

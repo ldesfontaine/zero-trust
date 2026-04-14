@@ -14,13 +14,15 @@
   gather_facts: false
   ignore_unreachable: true
   pre_tasks:
-    - include_role: { name: connection-resolver }
+    - name: "Pre-task : Résolution dynamique de la connexion SSH"
+      ansible.builtin.include_role: { name: connection-resolver }
       tags: [always]
-    - include_role: { name: netbird-client, tasks_from: resolve.yml }
+    - name: "Pre-task : Résolution IP NetBird"
+      ansible.builtin.include_role: { name: netbird-client, tasks_from: resolve.yml }
       tags: [always]
   roles:
-    - { role: services-vps,  tags: [services, crowdsec, ntfy, bientot-agent] }
-    - { role: monitoring,    tags: [monitoring, alerting, trivy] }
+    - { role: services-vps, tags: [services, crowdsec, ntfy, bientot-agent] }
+    - { role: monitoring, tags: [monitoring, grype] }
 
 # Phase 2 — Pi
 - name: "Services Cerveau (Pi)"
@@ -29,11 +31,13 @@
   gather_facts: false
   ignore_unreachable: true
   pre_tasks:
-    - include_role: { name: connection-resolver }
+    - name: "Pre-task : Résolution dynamique de la connexion SSH"
+      ansible.builtin.include_role: { name: connection-resolver }
       tags: [always]
-    - include_role: { name: netbird-client, tasks_from: resolve.yml }
+    - name: "Pre-task : Résolution IP NetBird"
+      ansible.builtin.include_role: { name: netbird-client, tasks_from: resolve.yml }
       tags: [always]
   roles:
-    - { role: services-pi,  tags: [services, seafile, vaultwarden, immich, adguard, bientot, veille-secu, portfolio] }
-    - { role: backup,       tags: [backup, zfs] }
-    - { role: monitoring,   tags: [monitoring, alerting, trivy] }
+    - { role: services-pi, tags: [services, seafile, vaultwarden, immich, adguard, bientot, veille-secu, portfolio] }
+    - { role: backup, tags: [backup, zfs] }
+    - { role: monitoring, tags: [monitoring, grype] }

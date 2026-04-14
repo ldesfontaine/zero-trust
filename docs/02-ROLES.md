@@ -14,7 +14,7 @@ roles/
 ├── services-vps/           ← CrowdSec + bouncer + Ntfy + bientot-agent
 ├── services-pi/            ← Tous les containers Pi
 ├── backup/                 ← ZFS snapshots + GPG + USB
-├── monitoring/             ← Health checks + Trivy + alerting Ntfy
+├── monitoring/             ← Scan CVE Grype + maintenance images Docker
 └── connection-resolver/    ← Détection auto connexion SSH
 ```
 
@@ -47,7 +47,7 @@ roles/
 | services-vps | `services`, `crowdsec`, `ntfy`, `bientot-agent` | VPS | docker, backbone (sentinel_net), netbird enrollé (mesh pour agent push) |
 | services-pi | `services`, `seafile`, `vaultwarden`, `immich`, `adguard`, `bientot`, `veille-secu`, `portfolio` | Pi | docker, netbird enrollé (bind IP mesh) |
 | backup | `backup`, `zfs` | Pi | services-pi (dossiers données doivent exister), mesh UP (SCP vers VPS) |
-| monitoring | `monitoring`, `alerting`, `trivy` | VPS + Pi | services-* (containers à checker), Ntfy accessible (mesh UP pour le Pi) |
+| monitoring | `monitoring`, `grype` | VPS + Pi | services-* (containers à checker), Ntfy accessible (mesh UP pour le Pi) |
 
 ### Phase 2 — mesh-config.yml
 
@@ -202,13 +202,12 @@ ajout:    trap ERR → notification Ntfy en cas d'échec (pas seulement succès)
 ```
 
 ### `monitoring`
-**Machines :** VPS + Pi — fusionne `alerting` + `image-maintenance`
+**Machines :** VPS + Pi
 ```
-possède:  templates/health-check.sh.j2, templates/image-maintenance.sh.j2
-          defaults/main.yml (seuils)
-ajout:    Trivy en --format json + jq (plus de grep regex)
-          Tous les curl Ntfy avec Authorization: Bearer
-          Seuil disk VPS à 80% (au lieu de 90%)
+Contenu : scan CVE hebdomadaire (Grype) + prune images Docker.
+L'alerting (CPU, RAM, disk, containers, ZFS, TLS, backup) est géré
+intégralement par Bientôt (modules agent + alerts.yml + notifier Ntfy).
+Note : Trivy retiré suite à la compromission supply chain TeamPCP (mars 2026).
 ```
 
 ### `connection-resolver`

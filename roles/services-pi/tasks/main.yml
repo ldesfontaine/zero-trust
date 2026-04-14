@@ -20,25 +20,35 @@
 ---
 
 # Infrastructure partagée (compose + .env + attente NetBird) — toujours exécutée
-- import_tasks: _compose.yml
+- name: "Services Pi : Deployer l'infrastructure compose"
+  ansible.builtin.import_tasks: _compose.yml
   tags: [always]
 
 # Services individuels — filtrés par tags
-- import_tasks: adguard.yml
+- name: "Services Pi : Configurer AdGuard"
+  ansible.builtin.import_tasks: adguard.yml
   tags: [adguard]
-- import_tasks: seafile.yml
+- name: "Services Pi : Configurer Seafile"
+  ansible.builtin.import_tasks: seafile.yml
   tags: [seafile]
-- import_tasks: vaultwarden.yml
+- name: "Services Pi : Configurer Vaultwarden"
+  ansible.builtin.import_tasks: vaultwarden.yml
   tags: [vaultwarden]
-- import_tasks: immich.yml
+- name: "Services Pi : Configurer Immich"
+  ansible.builtin.import_tasks: immich.yml
   tags: [immich]
-- import_tasks: bentopdf.yml
+- name: "Services Pi : Configurer BentoPDF"
+  ansible.builtin.import_tasks: bentopdf.yml
   tags: [bentopdf]
-- import_tasks: portfolio.yml
+- name: "Services Pi : Configurer Portfolio"
+  ansible.builtin.import_tasks: portfolio.yml
   tags: [portfolio]
-- import_tasks: bientot.yml
+- name: "Services Pi : Configurer Bientot"
+  ansible.builtin.import_tasks: bientot.yml
   tags: [bientot]
-- import_tasks: veille-secu.yml
+- name: "Services Pi : Configurer veille-secu"
+  ansible.builtin.import_tasks: veille-secu.yml
   tags: [veille-secu]
-- import_tasks: node-exporter.yml
+- name: "Services Pi : Configurer node-exporter"
+  ansible.builtin.import_tasks: node-exporter.yml
   tags: [node-exporter-pi]

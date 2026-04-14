@@ -22,7 +22,7 @@
 
   tasks:
     - name: "Bootstrap VPS : Vérifier les variables"
-      assert:
+      ansible.builtin.assert:
         that:
           - vault_ssh_user is defined and vault_ssh_user | length > 0
           - vault_ssh_password is defined and vault_ssh_password | length > 0
@@ -33,15 +33,15 @@
 
 
     - name: "Bootstrap VPS : Création de l'utilisateur admin"
-      user:
+      ansible.builtin.user:
         name: "{{ vault_ssh_user }}"
         shell: /bin/bash
         groups: sudo
-        append: yes
+        append: true
 
 
     - name: "Bootstrap VPS : Sudo sans mot de passe pour l'admin"
-      copy:
+      ansible.builtin.copy:
         content: "{{ vault_ssh_user }} ALL=(ALL) NOPASSWD:ALL\n"
         dest: "/etc/sudoers.d/{{ vault_ssh_user }}"
         mode: '0440'
@@ -56,11 +56,11 @@
 
 
     - name: "Bootstrap VPS : Création de l'utilisateur deploy (CI/CD)"
-      user:
+      ansible.builtin.user:
         name: "{{ vault_deploy_user }}"
         shell: /bin/bash
         # Groupe docker ajouté en L2 par le rôle docker (Docker pas encore installé ici)
-        create_home: yes
+        create_home: true
 
 
     - name: "Bootstrap VPS : Injection de la clé SSH deploy"
@@ -71,7 +71,7 @@
 
 
     - name: "Bootstrap VPS : Sudoers limité pour deploy (compose + git + ansible CI)"
-      copy:
+      ansible.builtin.copy:
         content: |
           # Docker Compose v2 — commandes de déploiement uniquement
           {{ vault_deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/docker compose -f /opt/*/docker-compose.yml up -d *
@@ -88,33 +88,33 @@
 
 
     - name: "Bootstrap VPS : Installer les prérequis Python"
-      apt:
+      ansible.builtin.apt:
         name:
           - python3-pip
           - python3-venv
         state: present
 
     - name: "Bootstrap VPS : Installer Git"
-      apt:
+      ansible.builtin.apt:
         name: git
         state: present
 
 
     - name: "Bootstrap VPS : Créer le venv Ansible dans /opt/ansible"
-      command: python3 -m venv /opt/ansible
+      ansible.builtin.command: python3 -m venv /opt/ansible
       args:
         creates: /opt/ansible/bin/python3
 
 
     - name: "Bootstrap VPS : Installer Ansible dans le venv système"
-      pip:
+      ansible.builtin.pip:
         name: ansible
         state: present
         virtualenv: /opt/ansible
 
 
     - name: "Bootstrap VPS : Lien symbolique ansible → /usr/local/bin"
-      file:
+      ansible.builtin.file:
         src: "/opt/ansible/bin/{{ item }}"
         dest: "/usr/local/bin/{{ item }}"
         state: link
@@ -127,7 +127,7 @@
     # version: main force un pull à chaque run — acceptable car bootstrap est one-shot (Run 0).
     # Le deploy workflow utilise git pull manuellement, pas ce module.
     - name: "Bootstrap VPS : Cloner le repo Ansible"
-      git:
+      ansible.builtin.git:
         repo: "{{ deploy_repo_url }}"
         dest: "{{ deploy_repo_path }}"
         version: main
@@ -135,7 +135,7 @@
 
 
     - name: "Bootstrap VPS : Installer les collections Ansible"
-      command: /usr/local/bin/ansible-galaxy collection install -r {{ deploy_repo_path }}/requirement.yml
+      ansible.builtin.command: /usr/local/bin/ansible-galaxy collection install -r {{ deploy_repo_path }}/requirement.yml
       become_user: "{{ vault_deploy_user }}"
       args:
         creates: "/home/{{ vault_deploy_user }}/.ansible/collections"
@@ -157,7 +157,7 @@
 
   tasks:
     - name: "Bootstrap Pi : Vérifier les variables critiques"
-      assert:
+      ansible.builtin.assert:
         that:
           - vault_pi_ssh_user is defined and vault_pi_ssh_user | length > 0
           - vault_pi_bootstrap_user is defined and vault_pi_bootstrap_user | length > 0
@@ -165,14 +165,14 @@
         fail_msg: "Variables bootstrap Pi manquantes — vérifier host_vars/pi_serv.yml"
 
     - name: "Bootstrap Pi : Création de l'utilisateur {{ vault_pi_ssh_user }}"
-      user:
+      ansible.builtin.user:
         name: "{{ vault_pi_ssh_user }}"
         shell: /bin/bash
         groups: sudo
-        append: yes
+        append: true
 
     - name: "Bootstrap Pi : Sudo sans mot de passe pour {{ vault_pi_ssh_user }}"
-      copy:
+      ansible.builtin.copy:
         content: "{{ vault_pi_ssh_user }} ALL=(ALL) NOPASSWD:ALL\n"
         dest: "/etc/sudoers.d/{{ vault_pi_ssh_user }}"
         mode: '0440'

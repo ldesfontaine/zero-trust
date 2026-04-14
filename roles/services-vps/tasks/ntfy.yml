@@ -1,7 +1,7 @@
 # Ntfy — notifications push (public, auth gérée par Ntfy)
 ---
 - name: Créer les dossiers Ntfy
-  file:
+  ansible.builtin.file:
     path: "{{ item }}"
     state: directory
     owner: "{{ vault_ssh_user }}"
@@ -13,10 +13,41 @@
     - "{{ stack_dir }}/ntfy/etc"
 
 - name: Pull de l'image Ntfy
-  shell: "cd {{ stack_dir }} && docker compose pull ntfy"
+  ansible.builtin.shell: "cd {{ stack_dir }} && docker compose pull ntfy"
   changed_when: false
 
 - name: Lancement de Ntfy
-  shell: "cd {{ stack_dir }} && docker compose up -d ntfy"
+  ansible.builtin.shell: "cd {{ stack_dir }} && docker compose up -d ntfy"
   register: _ntfy_up
   changed_when: "'Started' in _ntfy_up.stderr or 'Created' in _ntfy_up.stderr"
+
+# --- Configuration auth Ntfy (idempotent) ---
+# Le token est pré-généré dans le vault. On l'injecte dans Ntfy au premier boot.
+# Les runs suivants détectent que l'user/token existe et ne font rien.
+
+- name: Attendre que Ntfy soit opérationnel
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:80/v1/health"
+    status_code: [200]
+  register: _ntfy_health
+  retries: 10
+  delay: 3
+  until: _ntfy_health.status is defined and _ntfy_health.status == 200
+  when: not ansible_check_mode
+
+- name: Créer l'utilisateur Ntfy admin (idempotent)
+  ansible.builtin.shell: >
+    docker exec ntfy ntfy user list 2>/dev/null | grep -q "{{ vault_ntfy_admin_user }}" ||
+    docker exec ntfy ntfy user add --role=admin "{{ vault_ntfy_admin_user }}"
+  register: _ntfy_user
+  changed_when: "'added' in _ntfy_user.stdout | default('')"
+  when: not ansible_check_mode
+
+- name: Configurer le token Ntfy (idempotent)
+  ansible.builtin.shell: >
+    docker exec ntfy ntfy token list "{{ vault_ntfy_admin_user }}" 2>/dev/null | grep -q "{{ vault_ntfy_auth_token }}" ||
+    docker exec ntfy ntfy token add "{{ vault_ntfy_admin_user }}" --token "{{ vault_ntfy_auth_token }}"
+  register: _ntfy_token
+  changed_when: "'added' in _ntfy_token.stdout | default('')"
+  no_log: true
+  when: not ansible_check_mode

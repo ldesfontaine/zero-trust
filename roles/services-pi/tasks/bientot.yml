@@ -2,7 +2,7 @@
 # Panel admin privé : monitoring + métriques + alerting
 ---
 - name: Créer le répertoire bientot
-  file:
+  ansible.builtin.file:
     path: "{{ pi_stack_dir }}/bientot"
     state: directory
     owner: "{{ vault_pi_ssh_user }}"
@@ -11,7 +11,7 @@
 
 # Vérifier la signature cosign AVANT le pull (supply chain)
 - name: Vérifier la signature de l'image bientot-server
-  command: >
+  ansible.builtin.command: >
     /usr/local/bin/cosign verify
     --certificate-identity-regexp="https://github.com/ldesfontaine/.*"
     --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
@@ -20,16 +20,16 @@
   when: not ansible_check_mode
 
 - name: Pull de l'image Bientôt
-  shell: "cd {{ pi_stack_dir }} && docker compose pull bientot-server"
+  ansible.builtin.shell: "cd {{ pi_stack_dir }} && docker compose pull bientot-server"
   changed_when: false
 
 - name: Lancement de Bientôt
-  shell: "cd {{ pi_stack_dir }} && docker compose up -d bientot-server"
+  ansible.builtin.shell: "cd {{ pi_stack_dir }} && docker compose up -d bientot-server"
   register: _bientot_up
   changed_when: "'Started' in _bientot_up.stderr or 'Created' in _bientot_up.stderr"
 
 - name: Attendre que Bientôt soit opérationnel
-  uri:
+  ansible.builtin.uri:
     url: "http://{{ netbird_bind_ip }}:{{ bientot_port }}"
     status_code: [200, 301, 302]
   register: _bientot_health

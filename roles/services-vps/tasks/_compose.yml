@@ -2,7 +2,7 @@
 # Tagué [always] dans main.yml : s'exécute quel que soit le tag service demandé.
 ---
 - name: Créer les dossiers de la stack VPS
-  file:
+  ansible.builtin.file:
     path: "{{ item }}"
     state: directory
     owner: "{{ vault_ssh_user }}"
@@ -12,7 +12,7 @@
     - "{{ stack_dir }}"
 
 - name: Déployer .env (interpolation Compose CrowdSec — mode 0600)
-  template:
+  ansible.builtin.template:
     src: sentinel.env.j2
     dest: "{{ stack_dir }}/.env"
     owner: "{{ vault_ssh_user }}"
@@ -20,7 +20,7 @@
   notify: Reload Docker Stack VPS
 
 - name: Déployer bientot.env (secrets Bientôt agent — mode 0600)
-  template:
+  ansible.builtin.template:
     src: sentinel-bientot.env.j2
     dest: "{{ stack_dir }}/bientot.env"
     owner: "{{ vault_ssh_user }}"
@@ -29,7 +29,7 @@
 
 # Vérifier la signature cosign AVANT le déploiement (supply chain)
 - name: Vérifier la signature de l'image bientot-agent
-  command: >
+  ansible.builtin.command: >
     /usr/local/bin/cosign verify
     --certificate-identity-regexp="https://github.com/ldesfontaine/.*"
     --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
@@ -38,12 +38,12 @@
   when: not ansible_check_mode
 
 - name: Déployer les configurations (Templates)
-  template:
+  ansible.builtin.template:
     src: "{{ item.src }}"
     dest: "{{ stack_dir }}/{{ item.dest }}"
     owner: "{{ vault_ssh_user }}"
     mode: '0644'
   loop:
-    - { src: 'docker-compose_vps_yml.j2',    dest: 'docker-compose.yml' }
-    - { src: 'acquis_yaml.j2',               dest: 'acquis.yaml' }
+    - { src: 'docker-compose_vps_yml.j2', dest: 'docker-compose.yml' }
+    - { src: 'acquis_yaml.j2', dest: 'acquis.yaml' }
   notify: Reload Docker Stack VPS

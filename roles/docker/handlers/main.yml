@@ -1,6 +1,6 @@
 ---
 - name: Redémarrer Docker
-  systemd:
+  ansible.builtin.systemd:
     name: docker
     state: restarted
   when: not ansible_check_mode or (_docker_present is defined and _docker_present.rc == 0)

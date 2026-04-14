@@ -1,0 +1,2 @@
+group_vars/all.yml filter=ansible-vault diff=ansible-vault
+group_vars/versions.yml !filter !diff

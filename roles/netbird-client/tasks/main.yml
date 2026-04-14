@@ -15,50 +15,51 @@
 ---
 
 # -- Resolve : calculer netbird_bind_ip et netbird_mesh_ready ----------------
-- import_tasks: resolve.yml
+- name: "NetBird Client : Calculer netbird_bind_ip et netbird_mesh_ready"
+  ansible.builtin.import_tasks: resolve.yml
 
 - name: Creer le dossier de logs NetBird
-  file:
+  ansible.builtin.file:
     path: /var/log/netbird
     state: directory
     owner: root
     group: root
     mode: '0755'
 
-- name: Installer NetBird (script officiel — gere arm64 + amd64)
-  shell: "curl -fsSL https://pkgs.netbird.io/install.sh | sh"
+- name: Installer NetBird (script officiel — gere arm64 + amd64) # noqa: risky-shell-pipe command-instead-of-module
+  ansible.builtin.shell: "curl -fsSL https://pkgs.netbird.io/install.sh | sh"
   args:
     creates: /usr/bin/netbird
 
 # En check mode, le script ci-dessus ne s'exécute pas réellement (creates skip)
 # → apt update inutile et netbird introuvable. Skip si binaire absent.
 - name: Verifier si le binaire NetBird est present
-  command: which netbird
+  ansible.builtin.command: which netbird
   register: _netbird_present
   failed_when: false
   changed_when: false
   check_mode: false
 
 - name: Mettre a jour le cache apt apres ajout du repo NetBird
-  apt:
-    update_cache: yes
+  ansible.builtin.apt:
+    update_cache: true
   when: not ansible_check_mode or _netbird_present.rc == 0
 
 - name: Installer le package NetBird
-  apt:
+  ansible.builtin.apt:
     name: netbird
-    state: latest
+    state: present
   when: not ansible_check_mode or _netbird_present.rc == 0
 
 - name: Activer et demarrer NetBird daemon
-  systemd:
+  ansible.builtin.systemd:
     name: netbird
     state: started
-    enabled: yes
+    enabled: true
   when: not ansible_check_mode or _netbird_present.rc == 0
 
-- name: Verifier le statut d'enrollment NetBird
-  shell: "netbird status | grep -q 'Connected'"
+- name: Verifier le statut d'enrollment NetBird # noqa: risky-shell-pipe
+  ansible.builtin.shell: "netbird status | grep -q 'Connected'"
   register: netbird_enrolled
   changed_when: false
   failed_when: false
@@ -68,28 +69,29 @@
 #    repond pas, on restaure le resolv.conf original pour ne pas casser
 #    la resolution DNS de la machine.
 - name: Verifier si NetBird a modifie resolv.conf
-  stat:
+  ansible.builtin.stat:
     path: /etc/resolv.conf.original.netbird
   register: _nb_resolv_backup
 
-- name: Tester le DNS mesh NetBird
-  shell: "timeout 3 nslookup google.com $(grep nameserver /etc/resolv.conf | head -1 | awk '{print $2}') >/dev/null 2>&1"
+- name: Tester le DNS mesh NetBird # noqa: risky-shell-pipe yaml[line-length]
+  ansible.builtin.shell: "timeout 3 nslookup google.com $(grep nameserver /etc/resolv.conf | head -1 | awk '{print $2}') >/dev/null 2>&1"
   register: _nb_dns_test
   changed_when: false
   failed_when: false
   when: _nb_resolv_backup.stat.exists
 
 - name: Restaurer resolv.conf original (DNS mesh injoignable)
-  copy:
+  ansible.builtin.copy:
     src: /etc/resolv.conf.original.netbird
     dest: /etc/resolv.conf
     remote_src: true
+    mode: '0644'
   when:
     - _nb_resolv_backup.stat.exists
     - _nb_dns_test.rc | default(0) != 0
 
 - name: "INFO — DNS mesh restaure"
-  debug:
+  ansible.builtin.debug:
     msg: >
       NetBird a remplace /etc/resolv.conf avec un nameserver mesh
       injoignable (ACLs pas encore configurees). Le resolv.conf original
@@ -100,7 +102,7 @@
     - _nb_dns_test.rc | default(0) != 0
 
 - name: "INFO — Enrollment NetBird requis"
-  debug:
+  ansible.builtin.debug:
     msg: >
       NetBird installe et demarre mais PAS ENCORE ENROLE.
 

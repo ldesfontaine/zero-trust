@@ -1,4 +1,6 @@
 galaxy_info:
+  author: "ldesfontaine"
   description: "ACL NetBird + DNS NetBird + AdGuard DNS rewrites"
+  license: "proprietary"
   min_ansible_version: "2.14"
 allow_duplicates: false

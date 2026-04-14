@@ -1,78 +1,66 @@
 # ============================================================================
-# Monitoring — Health checks + maintenance images Docker + Trivy
+# Monitoring — Maintenance images Docker + Grype scan CVE
 #
-# Fusionne les anciens rôles alerting et image-maintenance.
-# Déployé sur VPS ET Pi.
+# L'alerting (CPU, RAM, disk, containers, ZFS, TLS, backup) est geré
+# intégralement par Bientôt (modules agent + alerts.yml + notifier Ntfy).
+#
 # Changements :
-#   - curl Ntfy : Authorization Bearer partout
-#   - Trivy : --format json + jq
-#   - Seuil disk VPS : 80%
+#   - Trivy retiré (compromission supply chain TeamPCP, mars 2026)
+#   - Health-check.sh supprimé (remplacé par Bientôt)
+#   - Dead man's switch supprimés (remplacés par Bientôt alerts.yml)
+#   - Grype (Anchore) remplace Trivy pour le scan CVE
 # ============================================================================
 ---
 
-# --- Health checks ---
-- name: Déployer le script de health-check
-  template:
-    src: health-check.sh.j2
-    dest: /usr/local/bin/health-check.sh
-    owner: root
-    mode: '0750'
+# === Nettoyage legacy ===
 
-- name: Cron health-check
-  cron:
+- name: Supprimer Trivy legacy (compromis supply chain mars 2026)
+  ansible.builtin.file:
+    path: /usr/local/bin/trivy
+    state: absent
+
+- name: Supprimer le cache Trivy
+  ansible.builtin.file:
+    path: /root/.cache/trivy
+    state: absent
+
+- name: Supprimer le script health-check legacy (remplacé par Bientôt)
+  ansible.builtin.file:
+    path: /usr/local/bin/health-check.sh
+    state: absent
+
+- name: Supprimer le cron health-check legacy
+  ansible.builtin.cron:
     name: "alerting-health-check"
-    minute: "*/{{ alerting_check_interval_min }}"
-    job: "/usr/local/bin/health-check.sh 2>&1 | logger -t health-check"
+    state: absent
 
-# --- Dead man's switch backup ---
-# Indépendant du script backup : si le cron backup ne tourne pas du tout
-# (daemon down, disque full, crontab effacé), cette alerte se déclenche.
-- name: Cron dead man's switch — alerte si aucun backup depuis 26h
-  cron:
+- name: Supprimer le répertoire d'état alerting legacy
+  ansible.builtin.file:
+    path: /var/lib/alerting
+    state: absent
+
+- name: Supprimer le cron dead man's switch backup legacy
+  ansible.builtin.cron:
     name: "backup-deadman-switch"
-    minute: "30"
-    hour: "*/6"
-    job: >-
-      find {{ backup_status_dir | default('/mnt/tank/stack/backup/status') }}/vps-latest.json -mmin +1560 2>/dev/null | grep -q . &&
-      curl -sf -H "Authorization: Bearer {{ vault_ntfy_auth_token }}"
-      -H "Title: [$(hostname -s)] Backup manqué"
-      -H "Tags: warning"
-      -H "Priority: high"
-      -d "Aucun backup exécuté depuis plus de 26h — vérifier le cron et le daemon."
-      "{{ ntfy_server_url }}/{{ ntfy_alert_topic }}" || true
-    user: root
-  when: alerting_check_backup_vps | default(false) | bool
+    state: absent
 
-# --- Dead man's switch ZFS snapshots ---
-# Vérifie que le dernier snapshot hourly a moins de 2h.
-# Si le cron ZFS ne tourne pas, cette alerte se déclenche.
-- name: Cron dead man's switch — alerte si snapshot ZFS hourly > 2h
-  cron:
+- name: Supprimer le cron dead man's switch ZFS legacy
+  ansible.builtin.cron:
     name: "zfs-snapshot-deadman"
-    minute: "15"
-    hour: "*/2"
-    job: >-
-      LATEST=$(zfs list -t snapshot -o name -s creation -r {{ zfs_pool | default('tank') }} 2>/dev/null
-      | grep autosnap-hourly | tail -1);
-      [ -z "$LATEST" ] &&
-      curl -sf -H "Authorization: Bearer {{ vault_ntfy_auth_token }}"
-      -H "Title: [$(hostname -s)] Snapshot ZFS manqué"
-      -H "Tags: warning"
-      -H "Priority: high"
-      -d "Aucun snapshot hourly trouvé sur {{ zfs_pool | default('tank') }}"
-      "{{ ntfy_server_url }}/{{ ntfy_alert_topic }}" || true
-    user: root
-  when: alerting_check_zfs_snapshot | default(false) | bool
+    state: absent
 
-# --- Image maintenance ---
-- name: Installer Trivy (scanner de vulnérabilités)
-  shell: |
-    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+# === Grype — scanner CVE images Docker (remplace Trivy) ===
+
+- name: Installer Grype # noqa: risky-shell-pipe command-instead-of-module
+  ansible.builtin.shell: |
+    curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
   args:
-    creates: /usr/local/bin/trivy
+    creates: /usr/local/bin/grype
+
+# === Maintenance images Docker ===
 
 - name: Déployer le script de maintenance des images Docker
-  template:
+  ansible.builtin.template:
     src: docker-image-maintenance.sh.j2
     dest: /opt/docker-image-maintenance.sh
     owner: root
@@ -80,7 +68,7 @@
     mode: '0750'
 
 - name: Cron hebdomadaire — maintenance des images Docker (dimanche 4h)
-  cron:
+  ansible.builtin.cron:
     name: "docker-image-maintenance"
     minute: "0"
     hour: "{{ docker_maintenance_cron_hour }}"
@@ -89,7 +77,7 @@
     user: root
 
 - name: Logrotate pour le log de maintenance
-  copy:
+  ansible.builtin.copy:
     content: |
       /var/log/docker-image-maintenance.log {
         weekly

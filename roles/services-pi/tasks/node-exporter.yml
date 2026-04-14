@@ -1,10 +1,10 @@
 # Node Exporter (Pi)
 ---
 - name: Pull de l'image node-exporter
-  shell: "cd {{ pi_stack_dir }} && docker compose pull node-exporter"
+  ansible.builtin.shell: "cd {{ pi_stack_dir }} && docker compose pull node-exporter"
   changed_when: false
 
 - name: Lancement de node-exporter
-  shell: "cd {{ pi_stack_dir }} && docker compose up -d node-exporter"
+  ansible.builtin.shell: "cd {{ pi_stack_dir }} && docker compose up -d node-exporter"
   register: _node_exporter_up
   changed_when: "'Started' in _node_exporter_up.stderr or 'Created' in _node_exporter_up.stderr"

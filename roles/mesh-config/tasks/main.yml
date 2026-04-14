@@ -18,11 +18,14 @@
 # ============================================================================
 ---
 
-- import_tasks: acl.yml
+- name: "Mesh Config : Configurer les ACLs NetBird"
+  ansible.builtin.import_tasks: acl.yml
   tags: [mesh-config, acl]
 
-- import_tasks: dns.yml
+- name: "Mesh Config : Configurer le DNS NetBird"
+  ansible.builtin.import_tasks: dns.yml
   tags: [mesh-config, dns]
 
-- import_tasks: adguard-rewrites.yml
+- name: "Mesh Config : Configurer les rewrites AdGuard"
+  ansible.builtin.import_tasks: adguard-rewrites.yml
   tags: [mesh-config, adguard]

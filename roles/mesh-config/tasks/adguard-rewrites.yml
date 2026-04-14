@@ -10,33 +10,34 @@
 ---
 
 - name: "INFO — AdGuard DNS rewrites ignorés (enrollment requis)"
-  debug:
+  ansible.builtin.debug:
     msg: "vault_pi_netbird_ip non renseigné — DNS rewrites AdGuard ignorés. Relancer après enrollment."
   when: vault_pi_netbird_ip in ["REMPLACER_APRES_ENROLEMENT_NETBIRD", "CHANGE_ME"]
 
 - name: Vérifier si AdGuard est joignable (TCP — sans auth)
-  wait_for:
+  ansible.builtin.wait_for:
     host: "{{ vault_pi_netbird_ip }}"
     port: "{{ adguard_ui_port }}"
     delay: 2
     timeout: 10
   when: vault_pi_netbird_ip not in ["REMPLACER_APRES_ENROLEMENT_NETBIRD", "CHANGE_ME"]
-  ignore_errors: true
+  failed_when: false
   register: adguard_reachable
 
 - name: "INFO — AdGuard pas encore déployé, rewrites ignorés"
-  debug:
+  ansible.builtin.debug:
     msg: "AdGuard non joignable sur {{ vault_pi_netbird_ip }}:{{ adguard_ui_port }} — relancer après services.yml"
   when: adguard_reachable is failed
 
-- when:
-  - vault_pi_netbird_ip not in ["REMPLACER_APRES_ENROLEMENT_NETBIRD", "CHANGE_ME"]
-  - adguard_reachable is not failed
-  - adguard_reachable is not skipped
+- name: "AdGuard Rewrites : Synchroniser les DNS rewrites"
+  when:
+    - vault_pi_netbird_ip not in ["REMPLACER_APRES_ENROLEMENT_NETBIRD", "CHANGE_ME"]
+    - adguard_reachable is not failed
+    - adguard_reachable is not skipped
   block:
 
-    - name: Récupérer les DNS rewrites existants dans AdGuard
-      shell: >
+    - name: Récupérer les DNS rewrites existants dans AdGuard # noqa: command-instead-of-module
+      ansible.builtin.shell: >
         curl -sf
         -u '{{ vault_adguard_admin_user }}:{{ vault_adguard_admin_password }}'
         http://{{ vault_pi_netbird_ip }}:{{ adguard_ui_port }}/control/rewrite/list
@@ -45,11 +46,11 @@
       no_log: true
 
     - name: Parser les rewrites existants
-      set_fact:
+      ansible.builtin.set_fact:
         adguard_rewrites_list: "{{ adguard_rewrites_raw.stdout | default('[]') | from_json }}"
 
-    - name: Supprimer les DNS rewrites avec IP incorrecte
-      shell: >
+    - name: Supprimer les DNS rewrites avec IP incorrecte # noqa: command-instead-of-module jinja[spacing]
+      ansible.builtin.shell: >
         curl -sf -X POST
         -u '{{ vault_adguard_admin_user }}:{{ vault_adguard_admin_password }}'
         http://{{ vault_pi_netbird_ip }}:{{ adguard_ui_port }}/control/rewrite/delete
@@ -57,17 +58,17 @@
         -d '{"domain":"{{ item.domain }}","answer":"{{ item.answer }}"}'
       no_log: true
       loop: "{{ adguard_rewrites_list | selectattr('domain', 'in', [
-          seafile_subdomain   + '.' + vault_base_domain,
+          seafile_subdomain + '.' + vault_base_domain,
           vaultwarden_subdomain + '.' + vault_base_domain,
-          adguard_subdomain     + '.' + vault_base_domain,
-          immich_subdomain      + '.' + vault_base_domain,
-          bientot_subdomain     + '.' + vault_base_domain,
-          ntfy_subdomain        + '.' + vault_base_domain
+          adguard_subdomain + '.' + vault_base_domain,
+          immich_subdomain + '.' + vault_base_domain,
+          bientot_subdomain + '.' + vault_base_domain,
+          ntfy_subdomain + '.' + vault_base_domain
         ]) | selectattr('answer', 'ne', vault_vps_netbird_ip) | list }}"
       changed_when: true
 
-    - name: Récupérer la liste des rewrites à jour
-      shell: >
+    - name: Récupérer la liste des rewrites à jour # noqa: command-instead-of-module
+      ansible.builtin.shell: >
         curl -sf
         -u '{{ vault_adguard_admin_user }}:{{ vault_adguard_admin_password }}'
         http://{{ vault_pi_netbird_ip }}:{{ adguard_ui_port }}/control/rewrite/list
@@ -76,11 +77,11 @@
       no_log: true
 
     - name: Parser la liste mise à jour
-      set_fact:
+      ansible.builtin.set_fact:
         adguard_rewrites_list: "{{ adguard_rewrites_raw2.stdout | default('[]') | from_json }}"
 
-    - name: Configurer les DNS rewrites pour les services Pi privés
-      shell: >
+    - name: Configurer les DNS rewrites pour les services Pi privés # noqa: command-instead-of-module
+      ansible.builtin.shell: >
         curl -sf -X POST
         -u '{{ vault_adguard_admin_user }}:{{ vault_adguard_admin_password }}'
         http://{{ vault_pi_netbird_ip }}:{{ adguard_ui_port }}/control/rewrite/add
@@ -95,5 +96,9 @@
         - "{{ bientot_subdomain }}"
         - "{{ ntfy_subdomain }}"
       when:
-        - adguard_rewrites_list | selectattr('domain', 'equalto', item + '.' + vault_base_domain) | selectattr('answer', 'equalto', vault_vps_netbird_ip) | list | length == 0
+        - >-
+          adguard_rewrites_list
+          | selectattr('domain', 'equalto', item + '.' + vault_base_domain)
+          | selectattr('answer', 'equalto', vault_vps_netbird_ip)
+          | list | length == 0
       changed_when: true

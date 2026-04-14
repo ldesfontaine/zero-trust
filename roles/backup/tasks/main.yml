@@ -11,7 +11,7 @@
 
 # --- Arborescence ---
 - name: Créer les répertoires de backup
-  file:
+  ansible.builtin.file:
     path: "{{ item }}"
     state: directory
     owner: root
@@ -24,37 +24,37 @@
     - "{{ backup_log_dir }}"
 
 # --- Importer la clé GPG publique pour chiffrement ---
-- name: Copier la clé GPG publique de backup
-  copy:
+- name: Copier la clé GPG publique de backup # noqa: var-naming[no-role-prefix]
+  ansible.builtin.copy:
     src: backup-gpg-public.asc
     dest: /root/.backup-gpg-public.asc
     owner: root
     mode: '0600'
   register: gpg_key_file
 
-- name: Importer la clé GPG publique dans le trousseau root
-  command: gpg --batch --import /root/.backup-gpg-public.asc
+- name: Importer la clé GPG publique dans le trousseau root # noqa: no-handler var-naming[no-role-prefix]
+  ansible.builtin.command: gpg --batch --import /root/.backup-gpg-public.asc
   register: _gpg_import
   when: gpg_key_file.changed
   changed_when: "'imported' in _gpg_import.stderr"
 
 # --- Scripts ---
 - name: Déployer le script de snapshots ZFS automatiques
-  template:
+  ansible.builtin.template:
     src: zfs-auto-snapshot.sh.j2
     dest: /usr/local/bin/zfs-auto-snapshot.sh
     owner: root
     mode: '0750'
 
 - name: Déployer le script de backup VPS quotidien
-  template:
+  ansible.builtin.template:
     src: backup-vps.sh.j2
     dest: /usr/local/bin/backup-vps.sh
     owner: root
     mode: '0750'
 
 - name: Déployer le script de backup USB
-  template:
+  ansible.builtin.template:
     src: backup-usb.sh.j2
     dest: /usr/local/bin/backup-usb.sh
     owner: root
@@ -63,20 +63,20 @@
 
 # --- Crons ---
 - name: Cron snapshot ZFS horaire
-  cron:
+  ansible.builtin.cron:
     name: "zfs-snapshot-hourly"
     minute: "0"
     job: "/usr/local/bin/zfs-auto-snapshot.sh hourly {{ zfs_snap_hourly_keep }} >> {{ backup_log_dir }}/snapshot.log 2>&1"
 
 - name: Cron snapshot ZFS quotidien
-  cron:
+  ansible.builtin.cron:
     name: "zfs-snapshot-daily"
     minute: "0"
     hour: "0"
     job: "/usr/local/bin/zfs-auto-snapshot.sh daily {{ zfs_snap_daily_keep }} >> {{ backup_log_dir }}/snapshot.log 2>&1"
 
 - name: Cron snapshot ZFS mensuel
-  cron:
+  ansible.builtin.cron:
     name: "zfs-snapshot-monthly"
     minute: "0"
     hour: "1"
@@ -84,7 +84,7 @@
     job: "/usr/local/bin/zfs-auto-snapshot.sh monthly {{ zfs_snap_monthly_keep }} >> {{ backup_log_dir }}/snapshot.log 2>&1"
 
 - name: Cron backup VPS quotidien
-  cron:
+  ansible.builtin.cron:
     name: "backup-vps-daily"
     minute: "{{ backup_vps_cron_minute }}"
     hour: "{{ backup_vps_cron_hour }}"
@@ -93,7 +93,7 @@
 
 # --- udev rule pour le SSD USB ---
 - name: Déployer la règle udev pour le SSD USB de backup
-  template:
+  ansible.builtin.template:
     src: 99-backup-usb.rules.j2
     dest: /etc/udev/rules.d/99-backup-usb.rules
     owner: root
@@ -103,7 +103,7 @@
 
 # --- Logrotate ---
 - name: Configurer logrotate pour les logs de backup
-  copy:
+  ansible.builtin.copy:
     content: |
       {{ backup_log_dir }}/*.log {
           weekly

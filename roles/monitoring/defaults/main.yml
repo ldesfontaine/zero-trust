@@ -6,5 +6,5 @@
 # ============================================================================
 
 # --- Ntfy (fallback si pas de variable vault) ---
-ntfy_server_url: "{{ vault_ntfy_server_url | default('https://ntfy.' + vault_base_domain) }}"
-ntfy_alert_topic: "{{ vault_ntfy_alert_topic | default('alerts') }}"
+ntfy_server_url: "{{ vault_ntfy_server_url | default('https://ntfy.' + vault_base_domain) }}" # noqa: var-naming[no-role-prefix]
+ntfy_alert_topic: "{{ vault_ntfy_alert_topic | default('alerts') }}" # noqa: var-naming[no-role-prefix]

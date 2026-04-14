@@ -14,7 +14,6 @@
 vault_base_domain: "CHANGE_ME"                # Domaine principal (ex: example.com)
 vault_admin_email: "CHANGE_ME"                # Email admin Let's Encrypt (ex: admin@example.com)
 vault_ssh_user: "CHANGE_ME"                   # User admin SSH sur les 2 machines
-vault_vps_mgmt_ip: "CHANGE_ME"               # IP publique du VPS
 
 # Sous-domaines (tous pointent vers l'IP publique VPS)
 netbird_subdomain: "mesh"
@@ -79,39 +78,9 @@ bientot_agent_port: "3002"                    # Push agents (mesh direct)
 
 # ══════════════════════════════════════════
 # VERSIONS DES IMAGES DOCKER
+# → Déplacées dans group_vars/versions.yml (non chiffré)
+# → Voir versions.yml.example
 # ══════════════════════════════════════════
-
-# ── OBLIGATOIRE (épingler sur un tag semver) ──
-
-# Images tierces
-traefik_version: "v3.1"
-crowdsec_version: "v1.6.8"
-ntfy_version: "v2.11.0"
-node_exporter_version: "v1.9.0"
-docker_socket_proxy_version: "0.2.0"
-netbird_server_version: "0.36.5"
-netbird_dashboard_version: "2.9.0"
-mariadb_version: "11"
-seafile_version: "11.0-latest"
-memcached_version: "1.6"
-vaultwarden_version: "1.32.1"
-adguard_version: "v0.107.55"
-immich_version: "v1.134.0"
-immich_redis_version: "7-alpine"
-immich_db_image: "ghcr.io/immich-app/postgres"
-immich_db_version: "14-vectorchord0.3.0-pgvectors0.2.0"
-
-# Images perso GHCR — image-maintenance fait trivy scan + docker image prune
-portfolio_image: "ghcr.io/ldesfontaine/termfolio"
-portfolio_version: "0.0.1"
-bientot_server_image: "ghcr.io/ldesfontaine/bientot-server"
-bientot_server_version: "0.0.1"
-bientot_agent_image: "ghcr.io/ldesfontaine/bientot-agent"
-bientot_agent_version: "0.0.1"
-veille_secu_image: "ghcr.io/ldesfontaine/vielle-technologique"
-veille_secu_version: "0.0.1"
-bentopdf_image: "ghcr.io/alam00000/bentopdf"
-bentopdf_version: "sha-latest"                # TODO: épingler sur un tag stable
 
 
 # ══════════════════════════════════════════
@@ -142,19 +111,17 @@ cert_check_domains: "{{ bentopdf_subdomain }}.{{ vault_base_domain }},{{ portfol
 
 
 # ══════════════════════════════════════════
-# SEUILS D'ALERTE (monitoring)
+# NTFY (optionnel — valeurs par défaut via roles/defaults)
 # ══════════════════════════════════════════
 
-# ── OPTIONNEL (valeurs par défaut sûres) ──
-alert_disk_critical_pct: 80                   # Disque : alerte critique au-delà de ce %
-alert_ram_warning_pct: 85                     # RAM : alerte au-delà de ce %
-alert_cpu_warning_pct: 90                     # CPU : alerte au-delà de ce %
-alert_cpu_duration_min: 5                     # CPU : minutes avant déclenchement alerte
-alert_backup_stale_hours: 48                  # Backup VPS : alerte si plus vieux que X heures
-alert_backup_usb_stale_days: 30               # Backup USB : alerte si plus vieux que X jours
-alert_tls_expire_days: 7                      # TLS : alerte si expiration dans X jours
-alert_dedup_window_seconds: 1800              # Fenêtre déduplication alertes (30 min)
-alerting_check_interval_min: "5"              # Cron health-check : intervalle en minutes
+# Ces variables vault permettent d'override les valeurs dérivées.
+# Si absentes, le système utilise : https://ntfy.<vault_base_domain>
+# vault_ntfy_server_url: "https://ntfy.example.com"     # Défaut: https://ntfy.<vault_base_domain>
+# vault_ntfy_alert_topic: "alerts"                       # Défaut: alerts
+# vault_ntfy_backup_topic: "backup"                      # Défaut: backup (topic backup scripts)
+
+# Les seuils d'alerte (disk, RAM, CPU, backup, TLS, ZFS) sont gérés
+# par Bientôt dans bientot/config/alerts.yml — NE PLUS les définir ici.
 
 
 # ══════════════════════════════════════════

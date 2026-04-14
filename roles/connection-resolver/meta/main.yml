@@ -2,6 +2,8 @@
 ---
 dependencies: []
 galaxy_info:
-  role_name: connection-resolver
+  author: "ldesfontaine"
+  role_name: connection_resolver
   description: "Detection automatique du contexte de connexion (remplace ci_mode)"
+  license: "proprietary"
   min_ansible_version: "2.14"

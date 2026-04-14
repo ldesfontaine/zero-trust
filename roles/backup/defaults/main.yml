@@ -6,7 +6,7 @@
 # ============================================================================
 
 # --- Pool ZFS ---
-zfs_pool: "tank"
+zfs_pool: "tank" # noqa: var-naming[no-role-prefix]
 
 # --- Répertoires (dérivés, rarement modifiés) ---
 backup_base_dir: "/mnt/tank/stack/backup"
@@ -25,5 +25,5 @@ backup_usb_luks_uuid: ""
 backup_usb_mount_point: "/mnt/backup-usb"
 
 # --- Notifications Ntfy (fallback si pas de variable vault) ---
-ntfy_backup_topic: "{{ vault_ntfy_backup_topic | default('backup') }}"
-ntfy_server_url: "{{ vault_ntfy_server_url | default('https://ntfy.' + vault_base_domain) }}"
+ntfy_backup_topic: "{{ vault_ntfy_backup_topic | default('backup') }}" # noqa: var-naming[no-role-prefix]
+ntfy_server_url: "{{ vault_ntfy_server_url | default('https://ntfy.' + vault_base_domain) }}" # noqa: var-naming[no-role-prefix]

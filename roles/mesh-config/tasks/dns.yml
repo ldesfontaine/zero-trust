@@ -9,7 +9,7 @@
 ---
 
 - name: Vérifier si le nameserver AdGuard existe déjà dans NetBird
-  uri:
+  ansible.builtin.uri:
     url: "https://{{ netbird_fqdn }}/api/dns/nameservers"
     method: GET
     headers:
@@ -27,12 +27,12 @@
   when: vault_pi_netbird_ip not in ["REMPLACER_APRES_ENROLEMENT_NETBIRD", "CHANGE_ME"]
 
 - name: Déduire si l'API NetBird est joignable
-  set_fact:
+  ansible.builtin.set_fact:
     netbird_api_reachable: "{{ (netbird_dns_list.status | default(-1)) == 200 }}"
   when: vault_pi_netbird_ip not in ["REMPLACER_APRES_ENROLEMENT_NETBIRD", "CHANGE_ME"]
 
 - name: Vérifier si AdGuard est déjà configuré
-  set_fact:
+  ansible.builtin.set_fact:
     adguard_dns_exists: >-
       {{
         netbird_dns_list.json | default([])
@@ -45,7 +45,7 @@
     - netbird_api_reachable | default(false)
 
 - name: Récupérer la liste des groupes NetBird
-  uri:
+  ansible.builtin.uri:
     url: "https://{{ netbird_fqdn }}/api/groups"
     method: GET
     headers:
@@ -62,7 +62,7 @@
     - not (adguard_dns_exists | default(false))
 
 - name: Extraire l'ID du groupe All
-  set_fact:
+  ansible.builtin.set_fact:
     netbird_all_group_id: >-
       {{
         netbird_groups.json
@@ -78,7 +78,7 @@
     - not (adguard_dns_exists | default(false))
 
 - name: Configurer AdGuard comme DNS resolver dans NetBird
-  uri:
+  ansible.builtin.uri:
     url: "https://{{ netbird_fqdn }}/api/dns/nameservers"
     method: POST
     headers:
@@ -107,7 +107,7 @@
     - not (adguard_dns_exists | default(false))
 
 - name: "INFO — DNS NetBird"
-  debug:
+  ansible.builtin.debug:
     msg: >
       {% if vault_pi_netbird_ip in ["REMPLACER_APRES_ENROLEMENT_NETBIRD", "CHANGE_ME"] %}
       DNS NetBird non configuré — enrollment NetBird requis d'abord.

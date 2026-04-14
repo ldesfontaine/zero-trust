@@ -1,4 +1,6 @@
 galaxy_info:
+  author: "ldesfontaine"
   description: "Socle commun — apt, outils, unattended-upgrades"
+  license: "proprietary"
   min_ansible_version: "2.14"
 allow_duplicates: false

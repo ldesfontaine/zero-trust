@@ -4,12 +4,12 @@
 # ============================================================================
 
 - name: Mettre à jour le cache apt
-  apt:
-    update_cache: yes
+  ansible.builtin.apt:
+    update_cache: true
     cache_valid_time: 3600
 
 - name: Mettre à jour tous les paquets
-  apt:
+  ansible.builtin.apt:
     upgrade: safe
   environment:
     NEEDRESTART_MODE: "a"
@@ -17,10 +17,10 @@
 # Si openssh-server a été mis à jour, sshd a redémarré
 # et le socket ControlMaster Ansible est périmé.
 - name: Réinitialiser la connexion SSH après apt upgrade
-  meta: reset_connection
+  ansible.builtin.meta: reset_connection
 
 - name: Installer les outils de base
-  apt:
+  ansible.builtin.apt:
     name:
       - curl
       - jq
@@ -33,7 +33,7 @@
 
 # Cosign — vérification de signature des images Docker GHCR (supply chain)
 - name: Installer cosign
-  get_url:
+  ansible.builtin.get_url:
     url: "https://github.com/sigstore/cosign/releases/download/v2.4.1/cosign-linux-{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
     dest: /usr/local/bin/cosign
     mode: '0755'
@@ -41,7 +41,7 @@
   when: not ansible_check_mode
 
 - name: Activer les mises à jour automatiques
-  copy:
+  ansible.builtin.copy:
     content: |
       APT::Periodic::Update-Package-Lists "1";
       APT::Periodic::Unattended-Upgrade "1";
@@ -50,7 +50,7 @@
     mode: '0644'
 
 - name: Configurer les sources des mises à jour automatiques
-  copy:
+  ansible.builtin.copy:
     content: |
       Unattended-Upgrade::Allowed-Origins {
         "${distro_id}:${distro_codename}";

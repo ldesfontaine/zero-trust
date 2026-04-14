@@ -13,7 +13,7 @@
 # --- Paquets spécifiques VPS ---
 
 - name: Installer les paquets VPS
-  apt:
+  ansible.builtin.apt:
     name:
       - cron
       - nftables
@@ -23,12 +23,12 @@
 # Créé par le bootstrap (L0). Vérifie seulement que les symlinks existent.
 
 - name: Vérifier que le venv Ansible existe
-  stat:
+  ansible.builtin.stat:
     path: /opt/ansible/bin/ansible-playbook
   register: ansible_venv_check
 
 - name: Vérifier les symlinks Ansible dans /usr/local/bin
-  file:
+  ansible.builtin.file:
     src: "/opt/ansible/bin/{{ item }}"
     dest: "/usr/local/bin/{{ item }}"
     state: link
@@ -41,22 +41,22 @@
 # --- Firewall nftables ---
 # nftables natif (PAS UFW) — cohabitation avec CrowdSec bouncer
 
-- name: Vérifier si UFW est installé
-  shell: dpkg-query -W -f='${Status}' ufw 2>/dev/null | grep -q "install ok installed"
+- name: Vérifier si UFW est installé # noqa: risky-shell-pipe
+  ansible.builtin.shell: dpkg-query -W -f='${Status}' ufw 2>/dev/null | grep -q "install ok installed"
   register: ufw_installed
   changed_when: false
   failed_when: false
   check_mode: false
 
 - name: Désactiver UFW si présent (conflit avec nftables)
-  systemd:
+  ansible.builtin.systemd:
     name: ufw
     state: stopped
     enabled: false
   when: ufw_installed.rc is defined and ufw_installed.rc == 0
 
 - name: Déployer la configuration nftables
-  template:
+  ansible.builtin.template:
     src: nftables_conf.j2
     dest: /etc/nftables.conf
     owner: root
@@ -66,7 +66,7 @@
   notify: Reload nftables
 
 - name: Activer et démarrer nftables
-  systemd:
+  ansible.builtin.systemd:
     name: nftables
     state: started
     enabled: true
@@ -74,7 +74,7 @@
 # --- Hardening SSH ---
 
 - name: Déploiement de la configuration SSH durcie
-  template:
+  ansible.builtin.template:
     src: sshd_config.j2
     dest: /etc/ssh/sshd_config
     owner: root
@@ -91,18 +91,18 @@
 # Mode CI (connection: local) : restart direct
 
 - name: Redémarrer SSH (async — connexion encore sur port 22)
-  systemd:
+  ansible.builtin.systemd: # noqa: no-handler
     name: sshd
     state: restarted
   async: 1
   poll: 0
-  ignore_errors: true
+  failed_when: false
   when:
     - _sshd_config is changed
     - ansible_connection | default('ssh') != 'local'
 
 - name: Redémarrer SSH (mode local — pas de risque de coupure)
-  systemd:
+  ansible.builtin.systemd: # noqa: no-handler
     name: sshd
     state: restarted
   when:
@@ -110,7 +110,7 @@
     - ansible_connection | default('ssh') == 'local'
 
 - name: Attendre que SSH soit disponible sur le nouveau port (depuis le poste)
-  wait_for:
+  ansible.builtin.wait_for: # noqa: no-handler
     host: "{{ ansible_host }}"
     port: "{{ vault_ssh_port }}"
     delay: 3
@@ -124,7 +124,7 @@
     - ansible_connection | default('ssh') != 'local'
 
 - name: Attendre que SSH soit disponible sur le nouveau port (mode local)
-  wait_for:
+  ansible.builtin.wait_for: # noqa: no-handler
     host: "127.0.0.1"
     port: "{{ vault_ssh_port }}"
     delay: 3
@@ -135,20 +135,20 @@
     - ansible_connection | default('ssh') == 'local'
 
 - name: Mise à jour du port SSH pour la session Ansible en cours
-  set_fact:
+  ansible.builtin.set_fact:
     ansible_port: "{{ vault_ssh_port }}"
   when: ansible_connection | default('ssh') != 'local'
 
 # Fermer le port 22 dans nftables (bootstrap terminé)
 - name: Créer le dossier facts.d
-  file:
+  ansible.builtin.file:
     path: /etc/ansible/facts.d
     state: directory
     owner: root
     mode: '0755'
 
 - name: Désactiver le port 22 dans nftables (flag bootstrap terminé)
-  copy:
+  ansible.builtin.copy:
     content: '{"ssh_bootstrap_open": false}'
     dest: /etc/ansible/facts.d/ssh_hardened.fact
     owner: root
@@ -157,7 +157,7 @@
   register: _ssh_bootstrap_flag
 
 - name: Re-générer nftables.conf sans le port 22
-  template:
+  ansible.builtin.template:
     src: nftables_conf.j2
     dest: /etc/nftables.conf
     owner: root

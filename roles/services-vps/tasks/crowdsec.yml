@@ -4,7 +4,7 @@
 # -- Dossiers + whitelist admin -------------------------------------------------
 
 - name: Créer les dossiers CrowdSec
-  file:
+  ansible.builtin.file:
     path: "{{ item }}"
     state: directory
     owner: "{{ vault_ssh_user }}"
@@ -19,7 +19,7 @@
 
 # Whitelist admin — évite l'auto-ban de l'IP admin publique
 - name: Déployer la whitelist admin CrowdSec
-  template:
+  ansible.builtin.template:
     src: crowdsec-admin-whitelist.yaml.j2
     dest: "{{ stack_dir }}/crowdsec/config/parsers/s02-enrich/admin-whitelist.yaml"
     owner: "{{ vault_ssh_user }}"
@@ -27,7 +27,7 @@
   notify: Restart CrowdSec
 
 - name: Déployer config.yaml.local (prometheus CrowdSec sur 127.0.0.1)
-  copy:
+  ansible.builtin.copy:
     content: |
       prometheus:
         enabled: true
@@ -42,16 +42,16 @@
 # -- Container CrowdSec --------------------------------------------------------
 
 - name: Pull de l'image CrowdSec
-  shell: "cd {{ stack_dir }} && docker compose pull crowdsec"
+  ansible.builtin.shell: "cd {{ stack_dir }} && docker compose pull crowdsec"
   changed_when: false
 
 - name: Lancement de CrowdSec
-  shell: "cd {{ stack_dir }} && docker compose up -d crowdsec"
+  ansible.builtin.shell: "cd {{ stack_dir }} && docker compose up -d crowdsec"
   register: _crowdsec_up
   changed_when: "'Started' in _crowdsec_up.stderr or 'Created' in _crowdsec_up.stderr"
 
 - name: Mise à jour des parsers et scénarios CrowdSec (hub update + upgrade)
-  shell: |
+  ansible.builtin.shell: |
     docker exec crowdsec cscli hub update && \
     docker exec crowdsec cscli hub upgrade --force
   changed_when: false
@@ -62,40 +62,40 @@
 
 # -- Bouncer firewall (hôte nftables) ------------------------------------------
 
-- name: Ajouter la clé GPG CrowdSec
-  shell: |
+- name: Ajouter la clé GPG CrowdSec # noqa: risky-shell-pipe command-instead-of-module
+  ansible.builtin.shell: |
     curl -fsSL https://packagecloud.io/crowdsec/crowdsec/gpgkey | \
     gpg --dearmor -o /etc/apt/keyrings/crowdsec_crowdsec-archive-keyring.gpg
   args:
     creates: /etc/apt/keyrings/crowdsec_crowdsec-archive-keyring.gpg
 
 - name: Ajouter le dépôt CrowdSec
-  copy:
+  ansible.builtin.copy:
     content: |
       deb [signed-by=/etc/apt/keyrings/crowdsec_crowdsec-archive-keyring.gpg] https://packagecloud.io/crowdsec/crowdsec/debian/ bookworm main
     dest: /etc/apt/sources.list.d/crowdsec_crowdsec.list
     mode: '0644'
 
 - name: Mettre à jour le cache apt pour CrowdSec
-  apt:
-    update_cache: yes
+  ansible.builtin.apt:
+    update_cache: true
   when: not ansible_check_mode
 
 - name: Installer le bouncer firewall CrowdSec (nftables)
-  apt:
+  ansible.builtin.apt:
     name: crowdsec-firewall-bouncer-nftables
-    state: latest
+    state: present
   when: not ansible_check_mode
 
 - name: Vérifier si le bouncer est déjà installé
-  command: which crowdsec-firewall-bouncer
+  ansible.builtin.command: which crowdsec-firewall-bouncer
   register: _bouncer_present
   failed_when: false
   changed_when: false
   check_mode: false
 
 - name: Attendre que le LAPI CrowdSec soit disponible
-  wait_for:
+  ansible.builtin.wait_for:
     host: 127.0.0.1
     port: 8080
     timeout: 90
@@ -103,7 +103,7 @@
   when: not ansible_check_mode
 
 - name: Vérifier l'état du LAPI CrowdSec (cscli)
-  shell: |
+  ansible.builtin.shell: |
     for i in 1 2 3 4 5 6 7 8 9 10; do
       docker exec crowdsec cscli lapi status && exit 0
       sleep 6
@@ -115,11 +115,11 @@
   when: not ansible_check_mode
 
 - name: Définir l'état LAPI CrowdSec
-  set_fact:
+  ansible.builtin.set_fact:
     crowdsec_lapi_ok: "{{ crowdsec_lapi_status.rc | default(1) == 0 }}"
 
 - name: Déployer la configuration du bouncer
-  template:
+  ansible.builtin.template:
     src: crowdsec-firewall-bouncer_yaml.j2
     dest: /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml
     owner: root
@@ -129,14 +129,14 @@
   when: not ansible_check_mode or _bouncer_present.rc == 0
 
 - name: Activer et démarrer le bouncer firewall CrowdSec
-  systemd:
+  ansible.builtin.systemd:
     name: crowdsec-firewall-bouncer
     state: started
-    enabled: yes
+    enabled: true
   when: not ansible_check_mode or _bouncer_present.rc == 0
 
 - name: "INFO — Bouncer CrowdSec ignoré (LAPI indisponible)"
-  debug:
+  ansible.builtin.debug:
     msg: >
       LAPI CrowdSec indisponible (cscli lapi status KO). Bouncer non démarré.
       Relancer plus tard quand CrowdSec est healthy.

@@ -1,0 +1,38 @@
+# ============================================================================
+# Versions des images Docker — PAS DE SECRETS ICI
+# Ce fichier est en clair pour permettre l'édition depuis GitHub UI.
+# Les secrets restent dans all.yml (chiffré).
+#
+# Copier vers versions.yml et adapter les versions.
+# Ne PAS chiffrer ce fichier.
+# ============================================================================
+
+# --- Images tierces ---
+traefik_version: "v3.x"
+crowdsec_version: "v1.x.x"
+ntfy_version: "v2.x.x"
+node_exporter_version: "v1.x.x"
+docker_socket_proxy_version: "0.x.x"
+netbird_server_version: "0.x.x"
+netbird_dashboard_version: "2.x.x"
+mariadb_version: "11"
+seafile_version: "11.0-latest"
+memcached_version: "1.6"
+vaultwarden_version: "1.x.x"
+adguard_version: "v0.x.x"
+immich_version: "v1.x.x"
+immich_redis_version: "7-alpine"
+immich_db_image: "ghcr.io/immich-app/postgres"
+immich_db_version: "14-vectorchord0.3.0-pgvectors0.2.0"
+
+# --- Projets perso (GHCR) ---
+portfolio_image: "ghcr.io/ldesfontaine/termfolio"
+portfolio_version: "0.0.1"
+bientot_server_image: "ghcr.io/ldesfontaine/bientot-server"
+bientot_server_version: "0.0.1"
+bientot_agent_image: "ghcr.io/ldesfontaine/bientot-agent"
+bientot_agent_version: "0.0.1"
+veille_secu_image: "ghcr.io/ldesfontaine/vielle-technologique"
+veille_secu_version: "0.0.1"
+bentopdf_image: "ghcr.io/alam00000/bentopdf"
+bentopdf_version: "sha-latest"                # TODO: épingler sur un tag stable

@@ -1,4 +1,6 @@
 galaxy_info:
+  author: "ldesfontaine"
   description: "Backbone — Traefik reverse proxy + NetBird server"
+  license: "proprietary"
   min_ansible_version: "2.14"
 allow_duplicates: false

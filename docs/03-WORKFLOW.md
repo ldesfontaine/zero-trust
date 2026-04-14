@@ -75,7 +75,7 @@ playbooks/
       tags: [always]
   roles:
     - { role: services-vps,  tags: [services, crowdsec, ntfy, bientot-agent] }
-    - { role: monitoring,    tags: [monitoring, alerting, trivy] }
+    - { role: monitoring,    tags: [monitoring, grype] }
 
 # Phase 2 — Pi
 - name: "Services Cerveau (Pi)"
@@ -91,7 +91,7 @@ playbooks/
   roles:
     - { role: services-pi,  tags: [services, seafile, vaultwarden, immich, adguard, bientot, veille-secu, portfolio] }
     - { role: backup,       tags: [backup, zfs] }
-    - { role: monitoring,   tags: [monitoring, alerting, trivy] }
+    - { role: monitoring,   tags: [monitoring, grype] }
 ```
 
 ---
@@ -143,12 +143,11 @@ ansible-playbook -i inventory.ini playbooks/mesh-config.yml --ask-vault-pass
 ```
 → Tous les containers UP, bind sur IP mesh. ACLs deny-by-default.
 
-### Étape 6 : Setup Ntfy auth (une fois)
-```bash
-docker exec ntfy ntfy user add --role=admin lucas
-docker exec ntfy ntfy token add lucas
-# → vault_ntfy_auth_token dans host_vars/ → relancer services.yml
-```
+### Étape 6 : Setup Ntfy auth (automatisé par Ansible)
+
+> Plus besoin de `docker exec` manuel.
+> L'utilisateur et le token sont créés automatiquement par le rôle services-vps.
+> Pré-requis : `vault_ntfy_admin_user` et `vault_ntfy_auth_token` dans le vault.
 
 ### Étape 7 : Vérifier
 ```bash
@@ -163,7 +162,8 @@ curl -sf https://portfolio.domain.com
 
 ### Changer une version d'image
 ```bash
-ansible-vault edit group_vars/all.yml       # version: "X.Y.Z"
+# Éditer directement sur GitHub UI ou en local :
+vi group_vars/versions.yml                  # version: "X.Y.Z"
 ansible-playbook playbooks/services.yml --tags services --limit lan --ask-vault-pass
 ```
 
@@ -171,14 +171,15 @@ ansible-playbook playbooks/services.yml --tags services --limit lan --ask-vault-
 ```bash
 cd termfolio && git tag v1.3.0 && git push origin --tags
 # → GitHub Actions build → GHCR
-ansible-vault edit group_vars/all.yml       # termfolio_version: "1.3.0"
+vi group_vars/versions.yml                  # termfolio_version: "1.3.0"
 ansible-playbook playbooks/services.yml --tags services --limit lan --ask-vault-pass
 ```
 
 ### Ajouter un service (voir aussi docs/10-ADDING-MACHINE.md)
 1. Container dans `services-pi/templates/docker-compose.brain.yml.j2`
+   Reseau Docker : `brain_services` (donnees utilisateur), `brain_infra` (monitoring/infra), `brain_public` (public via VPS), ou `brain_vault` (isole)
 2. Secrets dans `services-pi/templates/brain.env.j2`
-3. Version dans `group_vars/all.yml`
+3. Version dans `group_vars/versions.yml`
 4. Route Traefik dans `backbone/templates/traefik-services.yml.j2`
 5. DNS rewrite dans `mesh-config/tasks/main.yml`
 6. ACL port dans `mesh-config/tasks/main.yml` (policy infra→cerveau)

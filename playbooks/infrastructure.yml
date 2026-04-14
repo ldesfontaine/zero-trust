@@ -16,15 +16,17 @@
   gather_facts: false
   ignore_unreachable: true
   pre_tasks:
-    - include_role: { name: connection-resolver }
+    - name: "Pre-task : Résolution dynamique de la connexion SSH"
+      ansible.builtin.include_role: { name: connection-resolver }
       tags: [always]
-    - include_role: { name: netbird-client, tasks_from: resolve.yml }
+    - name: "Pre-task : Résolution IP NetBird"
+      ansible.builtin.include_role: { name: netbird-client, tasks_from: resolve.yml }
       tags: [always]
   roles:
-    - { role: common,         tags: [common] }
-    - { role: base-vps,       tags: [base, hardening, nftables, ssh] }
-    - { role: docker,         tags: [docker] }
-    - { role: backbone,       tags: [backbone, traefik, netbird-server] }
+    - { role: common, tags: [common] }
+    - { role: base-vps, tags: [base, hardening, nftables, ssh] }
+    - { role: docker, tags: [docker] }
+    - { role: backbone, tags: [backbone, traefik, netbird-server] }
     - { role: netbird-client, tags: [netbird-client] }
 
 # Phase 1 — Pi
@@ -34,12 +36,14 @@
   gather_facts: false
   ignore_unreachable: true
   pre_tasks:
-    - include_role: { name: connection-resolver }
+    - name: "Pre-task : Résolution dynamique de la connexion SSH"
+      ansible.builtin.include_role: { name: connection-resolver }
       tags: [always]
-    - include_role: { name: netbird-client, tasks_from: resolve.yml }
+    - name: "Pre-task : Résolution IP NetBird"
+      ansible.builtin.include_role: { name: netbird-client, tasks_from: resolve.yml }
       tags: [always]
   roles:
-    - { role: common,         tags: [common] }
-    - { role: base-pi,        tags: [base, hardening, ufw, ssh] }
-    - { role: docker,         tags: [docker] }
+    - { role: common, tags: [common] }
+    - { role: base-pi, tags: [base, hardening, ufw, ssh] }
+    - { role: docker, tags: [docker] }
     - { role: netbird-client, tags: [netbird-client] }
