@@ -146,6 +146,7 @@ cat > "${STATUS_DIR}/vps-latest.json" <<EOJSON
   "vps_disk_remaining_gb": ${VPS_DISK_REMAINING_GB}
 }
 EOJSON
+chmod 644 "${STATUS_DIR}/vps-latest.json"
 
 # --- 8. Notification ---
 echo "${LOG_PREFIX} Backup VPS terminé (${ARCHIVE_SIZE_MB} Mo)"

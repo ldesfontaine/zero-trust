@@ -19,6 +19,11 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    labels:
+      bientot.service.name: "BentoPDF"
+      bientot.service.url: "https://{{ bentopdf_subdomain }}.{{ vault_base_domain }}"
+      bientot.service.icon: "file"
+      bientot.service.public: "true"
     ports:
       - '{{ netbird_bind_ip }}:{{ bentopdf_port }}:8080'
     networks:
@@ -30,7 +35,7 @@ services:
       retries: 3
 
   portfolio:
-    image: ghcr.io/ldesfontaine/termfolio:{{ portfolio_version }}
+    image: {{ portfolio_image }}:{{ portfolio_version }}
     container_name: portfolio
     restart: unless-stopped
     security_opt:
@@ -40,6 +45,13 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    labels:
+      bientot.service.name: "Portfolio"
+      bientot.service.url: "https://{{ portfolio_subdomain }}.{{ vault_base_domain }}"
+      bientot.service.icon: "globe"
+      bientot.service.public: "true"
+    environment:
+      - SITE_URL={{ portfolio_site_url }}
     ports:
       - '{{ netbird_bind_ip }}:{{ portfolio_port }}:3000'
     networks:
@@ -82,6 +94,9 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     entrypoint: memcached -m 256
     networks:
       - brain_private
@@ -99,6 +114,11 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    labels:
+      bientot.service.name: "Seafile"
+      bientot.service.url: "https://{{ seafile_subdomain }}.{{ vault_base_domain }}"
+      bientot.service.icon: "cloud"
+      bientot.service.public: "false"
     depends_on:
       - seafile-db
       - memcached
@@ -133,6 +153,11 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    labels:
+      bientot.service.name: "Vaultwarden"
+      bientot.service.url: "https://{{ vaultwarden_subdomain }}.{{ vault_base_domain }}"
+      bientot.service.icon: "lock"
+      bientot.service.public: "false"
     environment:
       - ADMIN_TOKEN=${ADMIN_TOKEN}
       - DOMAIN=https://{{ vaultwarden_subdomain }}.{{ vault_base_domain }}
@@ -159,6 +184,11 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    labels:
+      bientot.service.name: "Immich"
+      bientot.service.url: "https://{{ immich_subdomain }}.{{ vault_base_domain }}"
+      bientot.service.icon: "image"
+      bientot.service.public: "false"
     depends_on:
       - immich-db
       - immich-redis
@@ -190,6 +220,10 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -231,6 +265,11 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    labels:
+      bientot.service.name: "AdGuard Home"
+      bientot.service.url: "https://{{ adguard_subdomain }}.{{ vault_base_domain }}"
+      bientot.service.icon: "shield"
+      bientot.service.public: "false"
     volumes:
       - {{ pi_stack_dir }}/adguard/work:/opt/adguardhome/work
       - {{ pi_stack_dir }}/adguard/conf:/opt/adguardhome/conf
@@ -251,23 +290,53 @@ services:
   # ══ BIENTÔT (monitoring + alerting) ════════════════════════════════════════
 
   bientot-server:
-    image: ghcr.io/ldesfontaine/bientot-server:{{ bientot_server_version }}
+    image: {{ bientot_server_image }}:{{ bientot_server_version }}
     container_name: bientot-server
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    labels:
+      bientot.service.name: "Bientôt"
+      bientot.service.url: "https://{{ bientot_subdomain }}.{{ vault_base_domain }}"
+      bientot.service.icon: "activity"
+      bientot.service.public: "false"
     env_file:
-      - .env
-    volumes:
-      - {{ pi_stack_dir }}/bientot:/data
+      - /mnt/tank/stack/bientot-server.env
     ports:
       - '{{ netbird_bind_ip }}:{{ bientot_port }}:{{ bientot_port }}'
+      - '{{ netbird_bind_ip }}:{{ bientot_agent_port }}:{{ bientot_agent_port }}'
+    volumes:
+      - {{ pi_stack_dir }}/bientot/data:/data
     networks:
       - brain_private
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:{{ bientot_port }}/ 2>/dev/null || exit 1"]
+      test: ["CMD", "bientot-server", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  bientot-agent:
+    image: {{ bientot_agent_image }}:{{ bientot_agent_version }}
+    container_name: bientot-agent-local
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    env_file:
+      - /mnt/tank/stack/bientot-agent-pi.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - {{ pi_stack_dir }}/backup/status:/status:ro
+    networks:
+      - brain_private
+    healthcheck:
+      test: ["CMD", "bientot-agent", "healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -275,7 +344,7 @@ services:
   # ══ VEILLE SÉCU ════════════════════════════════════════════════════════════
 
   veille-secu:
-    image: ghcr.io/ldesfontaine/veille-secu:{{ veille_secu_version }}
+    image: {{ veille_secu_image }}:{{ veille_secu_version }}
     container_name: veille-secu
     restart: unless-stopped
     security_opt:
@@ -283,7 +352,10 @@ services:
     cap_drop:
       - ALL
     env_file:
-      - .env
+      - veille.env
+    environment:
+      - DB_PATH=/data/veille.db
+      - WEB_PORT={{ veille_secu_web_port }}
     volumes:
       - {{ pi_stack_dir }}/veille-secu:/data
     ports:
@@ -291,7 +363,7 @@ services:
     networks:
       - brain_private
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:{{ veille_secu_web_port }}/ 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:{{ veille_secu_web_port }}/')\" 2>/dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -313,6 +385,7 @@ services:
       - /:/host:ro,rslave
     command:
       - '--path.rootfs=/host'
+      - '--collector.zfs'
     networks:
       - brain_private
     healthcheck:

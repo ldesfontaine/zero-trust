@@ -12,7 +12,7 @@
 # 5 Policies (deny-by-default, Default supprimée) :
 #   admins-sentinelle        : admins ↔ VPS   — accès total
 #   admins-cerveau           : admins ↔ Pi    — accès total
-#   infra-cerveau-web        : infra  → Pi    — TCP backends Traefik + 3002
+#   infra-cerveau-web        : infra  → Pi    — TCP backends Traefik + bientot_agent_port
 #   cerveau-sentinelle-push  : Pi     → VPS   — TCP 443, SSH (push Ntfy, etc.)
 #   infra-icmp               : infra  ↔ Pi    — ICMP health checks
 # ============================================================================

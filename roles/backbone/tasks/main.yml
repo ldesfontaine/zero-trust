@@ -28,6 +28,7 @@
   loop:
     - "{{ backbone_dir }}"
     - "{{ backbone_dir }}/traefik"
+    - "{{ backbone_dir }}/traefik/letsencrypt"
     - "{{ backbone_dir }}/traefik/dynamic"
     - "{{ backbone_dir }}/netbird"
     - "{{ backbone_dir }}/netbird/data"
@@ -111,15 +112,7 @@
     or _nb_compose is changed
     or _nb_config is changed
 
-# -- Validation gRPC ---------------------------------------------------------
-- name: Attendre le port gRPC NetBird (33073/tcp)
-  wait_for:
-    port: 33073
-    host: 127.0.0.1
-    timeout: 60
-    state: started
-  when: not ansible_check_mode
-
+# -- Validation NetBird ------------------------------------------------------
 - name: Valider l'API management NetBird (local, sans TLS)
   uri:
     url: "http://127.0.0.1:33080/api/accounts"

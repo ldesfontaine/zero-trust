@@ -129,6 +129,8 @@ http:
       service: pi-immich
       priority: 10
 
+    # veille-secu : pas de route Traefik — service interne uniquement, accès direct
+    # via mesh NetBird ({{ netbird_bind_ip }}:{{ veille_secu_web_port }}), pas d'exposition publique
     pi-bientot:
       rule: "Host(`{{ bientot_subdomain }}.{{ vault_base_domain }}`)"
       entrypoints:

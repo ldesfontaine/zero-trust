@@ -63,7 +63,7 @@ table inet filter {
     iifname "br-*" oifname != "br-*" udp dport 53 accept
 
     # Traefik → backends Pi via NetBird mesh
-    iifname "br-*" ip daddr 100.64.0.0/10 tcp dport { {{ adguard_ui_port }}, {{ bientot_port }}, {{ bentopdf_port }}, {{ portfolio_port }}, {{ seafile_port }}, {{ vaultwarden_port }}, {{ immich_port }}, {{ veille_secu_web_port }} } accept
+    iifname "br-*" ip daddr 100.64.0.0/10 tcp dport { {{ adguard_ui_port }}, {{ bientot_port }}, {{ bientot_agent_port }}, {{ bentopdf_port }}, {{ portfolio_port }}, {{ seafile_port }}, {{ vaultwarden_port }}, {{ immich_port }}, {{ veille_secu_web_port }} } accept
   }
 
   chain output {

@@ -18,10 +18,12 @@ services:
     cap_drop:
       - ALL
     cap_add:
+      # DAC_READ_SEARCH requis pour lire les logs système (/var/log, journald)
       - DAC_READ_SEARCH
     environment:
       COLLECTIONS: "crowdsecurity/linux crowdsecurity/traefik crowdsecurity/sshd"
       BOUNCER_KEY_firewall: "${BOUNCER_KEY_firewall}"
+      DOCKER_HOST: tcp://docker-proxy:2375
     volumes:
       - ./crowdsec/config:/etc/crowdsec
       - ./crowdsec/data:/var/lib/crowdsec/data
@@ -30,7 +32,6 @@ services:
       - /var/log/journal:/var/log/journal:ro
       - /etc/machine-id:/etc/machine-id:ro
       - ./acquis.yaml:/etc/crowdsec/acquis.yaml:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - '127.0.0.1:8080:8080'
       - '127.0.0.1:6060:6060'
@@ -59,8 +60,6 @@ services:
       - NTFY_UPSTREAM_BASE_URL=https://ntfy.sh
       - NTFY_BEHIND_PROXY=true
       - NTFY_AUTH_DEFAULT_ACCESS=deny-all
-    env_file:
-      - .env
     volumes:
       - {{ stack_dir }}/ntfy/cache:/var/cache/ntfy
       - {{ stack_dir }}/ntfy/etc:/etc/ntfy
@@ -72,6 +71,11 @@ services:
       - "traefik.http.routers.ntfy.tls.certresolver=letsencrypt"
       - "traefik.http.routers.ntfy.middlewares=security-headers@file"
       - "traefik.http.services.ntfy.loadbalancer.server.port=80"
+      # Bientôt — découverte automatique par l'agent
+      - "bientot.service.name=Ntfy"
+      - "bientot.service.url=https://{{ ntfy_subdomain }}.{{ vault_base_domain }}"
+      - "bientot.service.icon=bell"
+      - "bientot.service.public=true"
     networks:
       - sentinel_net
     healthcheck:
@@ -109,7 +113,7 @@ services:
   # Push-only : collecte les métriques locales et push vers le serveur Bientôt (Pi)
 
   bientot-agent:
-    image: ghcr.io/ldesfontaine/bientot-agent:{{ bientot_agent_version }}
+    image: {{ bientot_agent_image }}:{{ bientot_agent_version }}
     container_name: bientot-agent
     restart: unless-stopped
     security_opt:
@@ -120,11 +124,11 @@ services:
     tmpfs:
       - /tmp
     env_file:
-      - .env
+      - bientot.env
     networks:
       - sentinel_net
     healthcheck:
-      test: ["CMD-SHELL", "test -f /tmp/heartbeat || exit 1"]
+      test: ["CMD", "bientot-agent", "healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -9,10 +9,34 @@
     group: "{{ vault_pi_ssh_user }}"
     mode: '0755'
 
-- name: Déployer le fichier .env (secrets vault — mode 0600)
+- name: Déployer le fichier .env principal (secrets vault — mode 0600)
   template:
     src: brain.env.j2
     dest: "{{ pi_stack_dir }}/.env"
+    owner: "{{ vault_pi_ssh_user }}"
+    mode: '0600'
+  notify: Reload Docker Stack Pi
+
+- name: Déployer le fichier bientot-server.env (secrets vault — mode 0600)
+  template:
+    src: bientot-server.env.j2
+    dest: "{{ pi_stack_dir }}/bientot-server.env"
+    owner: "{{ vault_pi_ssh_user }}"
+    mode: '0600'
+  notify: Reload Docker Stack Pi
+
+- name: Déployer le fichier bientot-agent-pi.env (secrets vault — mode 0600)
+  template:
+    src: bientot-agent-pi.env.j2
+    dest: "{{ pi_stack_dir }}/bientot-agent-pi.env"
+    owner: "{{ vault_pi_ssh_user }}"
+    mode: '0600'
+  notify: Reload Docker Stack Pi
+
+- name: Déployer le fichier veille.env (secrets vault — mode 0600)
+  template:
+    src: veille.env.j2
+    dest: "{{ pi_stack_dir }}/veille.env"
     owner: "{{ vault_pi_ssh_user }}"
     mode: '0600'
   notify: Reload Docker Stack Pi

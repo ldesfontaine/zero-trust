@@ -36,3 +36,10 @@ vault_immich_db_name: "immich"
 # --- NetBird API Token ---
 # Générer : Dashboard NetBird → team > user → Personal Access Tokens
 vault_netbird_api_token: "CHANGE_ME"
+
+# --- Bientôt ---
+vault_bientot_token_pi: "CHANGE_ME"            # openssl rand -hex 32
+vault_bientot_token_vps: "CHANGE_ME"           # même valeur que sur le VPS
+
+# --- Veille sécu ---
+vault_veille_token: "CHANGE_ME"                # openssl rand -hex 32

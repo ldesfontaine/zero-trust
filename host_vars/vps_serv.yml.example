@@ -25,3 +25,6 @@ vault_ntfy_auth_token: "CHANGE_ME"             # Token Bearer pour les notificat
 # --- NetBird Server ---
 vault_netbird_datastore_key: "CHANGE_ME"       # openssl rand -base64 32
 vault_netbird_relay_secret: "CHANGE_ME"        # openssl rand -base64 32
+
+# --- Bientôt ---
+vault_bientot_token_vps: "CHANGE_ME"           # openssl rand -hex 32

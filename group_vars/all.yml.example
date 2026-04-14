@@ -15,16 +15,18 @@ memcached_version: "1.6"
 vaultwarden_version: "1.32.1"
 adguard_version: "v0.107.55"
 bentopdf_image: "ghcr.io/alam00000/bentopdf"
-bentopdf_version: "sha-latest"  # TODO: épingler sur un SHA ou tag stable
+bentopdf_version: "sha-latest"  # Épingler : ghcr.io/alam00000/bentopdf → remplacer par sha-<commit> stable
 ntfy_version: "v2.11.0"
+docker_socket_proxy_version: "0.2.0"
+# --- Images perso : latest intentionnel — image-maintenance met à jour auto (dimanche 04:00 UTC)
 portfolio_image: "ghcr.io/ldesfontaine/termfolio"
-portfolio_version: "latest"     # TODO: épingler sur un tag stable
+portfolio_version: "latest"
 bientot_server_image: "ghcr.io/ldesfontaine/bientot-server"
-bientot_server_version: "latest"  # TODO: épingler sur un tag stable
+bientot_server_version: "latest"
 bientot_agent_image: "ghcr.io/ldesfontaine/bientot-agent"
-bientot_agent_version: "latest"   # TODO: épingler sur un tag stable
-veille_secu_image: "ghcr.io/ldesfontaine/veille-secu"
-veille_secu_version: "latest"     # TODO: épingler sur un tag stable
+bientot_agent_version: "latest"
+veille_secu_image: "ghcr.io/ldesfontaine/vielle-technologique"
+veille_secu_version: "latest"
 immich_version: "v1.134.0"
 immich_redis_version: "7-alpine"
 immich_db_image: "ghcr.io/immich-app/postgres"
@@ -81,6 +83,19 @@ veille_secu_web_port: "8094"
 immich_port: "8096"
 adguard_ui_port: "3000"
 bientot_port: "3001"
+bientot_agent_port: "3002"
+
+# --- Config veille-sécu (variables lues par le container) ---
+veille_secu_watch_stack: "traefik,seafile,vaultwarden,docker,linux,netbird,crowdsec"
+veille_secu_cron_interval: "3600"
+veille_secu_ntfy_topic: "veille-secu"
+veille_secu_manual_cooldown: "900"
+
+# --- Domaines à vérifier pour l'expiration TLS (optionnel) ---
+cert_check_domains: "{{ bentopdf_subdomain }}.{{ vault_base_domain }},{{ portfolio_subdomain }}.{{ vault_base_domain }},{{ seafile_subdomain }}.{{ vault_base_domain }},{{ vaultwarden_subdomain }}.{{ vault_base_domain }}"
+
+# --- Config portfolio ---
+portfolio_site_url: "https://{{ portfolio_subdomain }}.{{ vault_base_domain }}"
 
 # --- NetBird IPs WireGuard (aliases cross-host) ---
 # La source de verite est host_netbird_ip dans chaque host_vars/.

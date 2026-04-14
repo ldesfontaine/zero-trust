@@ -1,4 +1,4 @@
-# Infrastructure partagée stack VPS — deploie le docker-compose.yml + .env
+# Infrastructure partagée stack VPS — deploie le docker-compose.yml + env files
 # Tagué [always] dans main.yml : s'exécute quel que soit le tag service demandé.
 ---
 - name: Créer les dossiers de la stack VPS
@@ -11,13 +11,31 @@
   loop:
     - "{{ stack_dir }}"
 
-- name: Déployer le fichier .env (secrets vault — mode 0600)
+- name: Déployer .env (interpolation Compose CrowdSec — mode 0600)
   template:
     src: sentinel.env.j2
     dest: "{{ stack_dir }}/.env"
     owner: "{{ vault_ssh_user }}"
     mode: '0600'
   notify: Reload Docker Stack VPS
+
+- name: Déployer bientot.env (secrets Bientôt agent — mode 0600)
+  template:
+    src: sentinel-bientot.env.j2
+    dest: "{{ stack_dir }}/bientot.env"
+    owner: "{{ vault_ssh_user }}"
+    mode: '0600'
+  notify: Reload Docker Stack VPS
+
+# Vérifier la signature cosign AVANT le déploiement (supply chain)
+- name: Vérifier la signature de l'image bientot-agent
+  command: >
+    /usr/local/bin/cosign verify
+    --certificate-identity-regexp="https://github.com/ldesfontaine/.*"
+    --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+    "{{ bientot_agent_image }}:{{ bientot_agent_version }}"
+  changed_when: false
+  when: not ansible_check_mode
 
 - name: Déployer les configurations (Templates)
   template:

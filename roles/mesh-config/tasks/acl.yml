@@ -355,7 +355,7 @@
       when: nb_policies_resp.json | selectattr('name', 'equalto', 'admins-cerveau') | list | length == 0
       changed_when: true
 
-    # Policy 3 : infra → cerveau (TCP backends Traefik + port 3002)
+    # Policy 3 : infra → cerveau (TCP backends Traefik + bientot_agent_port)
     - name: Créer policy infra-cerveau-web
       uri:
         url: "https://{{ netbird_fqdn }}/api/policies"
@@ -384,7 +384,7 @@
                 - "{{ immich_port }}"
                 - "{{ adguard_ui_port }}"
                 - "{{ bientot_port }}"
-                - "3002"
+                - "{{ bientot_agent_port }}"
               sources:
                 - "{{ nb_grp_infra }}"
               destinations:
@@ -424,7 +424,7 @@
                 - "{{ immich_port }}"
                 - "{{ adguard_ui_port }}"
                 - "{{ bientot_port }}"
-                - "3002"
+                - "{{ bientot_agent_port }}"
               sources:
                 - "{{ nb_grp_infra }}"
               destinations:
@@ -507,7 +507,7 @@
           Policies NetBird configurées :
           - admins ↔ sentinelle  : accès total
           - admins ↔ cerveau     : accès total
-          - infra  → cerveau    : TCP backends Traefik + 3002
+          - infra  → cerveau    : TCP backends Traefik + {{ bientot_agent_port }}
           - cerveau → sentinelle : TCP 443, SSH
           - infra  ↔ cerveau    : ICMP
           Policy Default (All→All) supprimée. Deny-by-default actif.

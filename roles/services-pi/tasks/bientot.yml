@@ -9,6 +9,16 @@
     group: "{{ vault_pi_ssh_user }}"
     mode: '0755'
 
+# Vérifier la signature cosign AVANT le pull (supply chain)
+- name: Vérifier la signature de l'image bientot-server
+  command: >
+    /usr/local/bin/cosign verify
+    --certificate-identity-regexp="https://github.com/ldesfontaine/.*"
+    --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+    "{{ bientot_server_image }}:{{ bientot_server_version }}"
+  changed_when: false
+  when: not ansible_check_mode
+
 - name: Pull de l'image Bientôt
   shell: "cd {{ pi_stack_dir }} && docker compose pull bientot-server"
   changed_when: false

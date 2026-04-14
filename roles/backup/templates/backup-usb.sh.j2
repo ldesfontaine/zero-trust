@@ -91,6 +91,7 @@ cat > "${STATUS_DIR}/usb-latest.json" <<EOJSON
   "days_since_last": 0
 }
 EOJSON
+chmod 644 "${STATUS_DIR}/usb-latest.json"
 
 # --- 6. Démontage + fermeture LUKS + éjection ---
 echo "${LOG_PREFIX} Fermeture et éjection du SSD"
