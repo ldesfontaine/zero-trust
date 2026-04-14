@@ -46,6 +46,8 @@ alerting_check_docker: true
 alerting_check_backup_vps: true               # Le Pi fait le backup → activer le check
 alerting_check_backup_usb: true               # Alerte si USB pas branché depuis X jours
 alerting_check_zfs: true                      # Le Pi a le ZFS → activer le check
+alerting_check_zfs_snapshot: true             # Alerte si dernier snapshot hourly > 2h
+alert_zfs_snapshot_stale_hours: 2             # Seuil : heures depuis dernier snapshot hourly
 backup_vps_enabled: true                      # Backup GPG quotidien vers VPS
 
 # Backup VPS — cron

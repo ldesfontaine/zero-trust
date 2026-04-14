@@ -34,8 +34,9 @@
 
 - name: Importer la clé GPG publique dans le trousseau root
   command: gpg --batch --import /root/.backup-gpg-public.asc
+  register: _gpg_import
   when: gpg_key_file.changed
-  changed_when: true
+  changed_when: "'imported' in _gpg_import.stderr"
 
 # --- Scripts ---
 - name: Déployer le script de snapshots ZFS automatiques

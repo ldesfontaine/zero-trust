@@ -70,11 +70,18 @@
         key: "{{ lookup('file', deploy_ssh_key_path) }}"
 
 
-    - name: "Bootstrap VPS : Sudoers limité pour deploy (docker + git + ansible CI)"
+    - name: "Bootstrap VPS : Sudoers limité pour deploy (compose + git + ansible CI)"
       copy:
         content: |
-          {{ vault_deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/docker, /usr/bin/docker-compose, /usr/bin/git
-          {{ vault_deploy_user }} ALL=(ALL) NOPASSWD: /usr/local/bin/ansible-playbook
+          # Docker Compose v2 — commandes de déploiement uniquement
+          {{ vault_deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/docker compose -f /opt/*/docker-compose.yml up -d *
+          {{ vault_deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/docker compose -f /opt/*/docker-compose.yml pull *
+          {{ vault_deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/docker compose -f /opt/*/docker-compose.yml down *
+          {{ vault_deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/docker compose -f /opt/*/docker-compose.yml ps *
+          # Ansible — uniquement les playbooks du repo déployé
+          {{ vault_deploy_user }} ALL=(ALL) NOPASSWD: /usr/local/bin/ansible-playbook -i {{ deploy_repo_path }}/inventory.ini {{ deploy_repo_path }}/playbooks/*
+          # Git — uniquement dans le repo déployé
+          {{ vault_deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/git -C {{ deploy_repo_path }} *
         dest: "/etc/sudoers.d/{{ vault_deploy_user }}"
         mode: '0440'
         validate: '/usr/sbin/visudo -cf %s'
@@ -117,6 +124,8 @@
         - ansible
 
 
+    # version: main force un pull à chaque run — acceptable car bootstrap est one-shot (Run 0).
+    # Le deploy workflow utilise git pull manuellement, pas ce module.
     - name: "Bootstrap VPS : Cloner le repo Ansible"
       git:
         repo: "{{ deploy_repo_url }}"

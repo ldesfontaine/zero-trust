@@ -24,6 +24,46 @@
     minute: "*/{{ alerting_check_interval_min }}"
     job: "/usr/local/bin/health-check.sh 2>&1 | logger -t health-check"
 
+# --- Dead man's switch backup ---
+# Indépendant du script backup : si le cron backup ne tourne pas du tout
+# (daemon down, disque full, crontab effacé), cette alerte se déclenche.
+- name: Cron dead man's switch — alerte si aucun backup depuis 26h
+  cron:
+    name: "backup-deadman-switch"
+    minute: "30"
+    hour: "*/6"
+    job: >-
+      find {{ backup_status_dir | default('/mnt/tank/stack/backup/status') }}/vps-latest.json -mmin +1560 2>/dev/null | grep -q . &&
+      curl -sf -H "Authorization: Bearer {{ vault_ntfy_auth_token }}"
+      -H "Title: [$(hostname -s)] Backup manqué"
+      -H "Tags: warning"
+      -H "Priority: high"
+      -d "Aucun backup exécuté depuis plus de 26h — vérifier le cron et le daemon."
+      "{{ ntfy_server_url }}/{{ ntfy_alert_topic }}" || true
+    user: root
+  when: alerting_check_backup_vps | default(false) | bool
+
+# --- Dead man's switch ZFS snapshots ---
+# Vérifie que le dernier snapshot hourly a moins de 2h.
+# Si le cron ZFS ne tourne pas, cette alerte se déclenche.
+- name: Cron dead man's switch — alerte si snapshot ZFS hourly > 2h
+  cron:
+    name: "zfs-snapshot-deadman"
+    minute: "15"
+    hour: "*/2"
+    job: >-
+      LATEST=$(zfs list -t snapshot -o name -s creation -r {{ zfs_pool | default('tank') }} 2>/dev/null
+      | grep autosnap-hourly | tail -1);
+      [ -z "$LATEST" ] &&
+      curl -sf -H "Authorization: Bearer {{ vault_ntfy_auth_token }}"
+      -H "Title: [$(hostname -s)] Snapshot ZFS manqué"
+      -H "Tags: warning"
+      -H "Priority: high"
+      -d "Aucun snapshot hourly trouvé sur {{ zfs_pool | default('tank') }}"
+      "{{ ntfy_server_url }}/{{ ntfy_alert_topic }}" || true
+    user: root
+  when: alerting_check_zfs_snapshot | default(false) | bool
+
 # --- Image maintenance ---
 - name: Installer Trivy (scanner de vulnérabilités)
   shell: |

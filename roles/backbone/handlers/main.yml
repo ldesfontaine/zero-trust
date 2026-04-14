@@ -1,3 +1,5 @@
 ---
 - name: Reload Backbone Stack
   shell: "cd {{ backbone_dir }} && docker compose up -d --remove-orphans"
+  register: _compose_reload_backbone
+  changed_when: "'Started' in _compose_reload_backbone.stderr or 'Created' in _compose_reload_backbone.stderr"

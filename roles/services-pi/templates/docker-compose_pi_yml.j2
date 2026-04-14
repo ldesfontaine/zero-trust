@@ -78,7 +78,7 @@ services:
     volumes:
       - {{ pi_stack_dir }}/seafile/db:/var/lib/mysql
     networks:
-      - brain_private
+      - brain_services
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 30s
@@ -99,7 +99,7 @@ services:
       - /tmp
     entrypoint: memcached -m {{ memcached_memory_mb }}
     networks:
-      - brain_private
+      - brain_services
     healthcheck:
       test: ["CMD-SHELL", "echo stats | nc localhost 11211 | grep -q pid"]
       interval: 30s
@@ -135,7 +135,7 @@ services:
     ports:
       - '{{ netbird_bind_ip }}:{{ seafile_port }}:80'
     networks:
-      - brain_private
+      - brain_services
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:80/ > /dev/null || exit 1"]
       interval: 30s
@@ -205,7 +205,7 @@ services:
     ports:
       - '{{ netbird_bind_ip }}:{{ immich_port }}:2283'
     networks:
-      - brain_private
+      - brain_services
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:2283/api/server/ping"]
       interval: 30s
@@ -230,7 +230,7 @@ services:
       timeout: 5s
       retries: 3
     networks:
-      - brain_private
+      - brain_services
 
   immich-db:
     image: {{ immich_db_image }}:{{ immich_db_version }}
@@ -248,7 +248,7 @@ services:
     volumes:
       - {{ pi_stack_dir }}/immich/db:/var/lib/postgresql/data
     networks:
-      - brain_private
+      - brain_services
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -d {{ vault_immich_db_name }} -U {{ vault_immich_db_user }}"]
       interval: 10s
@@ -278,7 +278,7 @@ services:
       - '{{ netbird_bind_ip }}:5353:53/udp'
       - '{{ netbird_bind_ip }}:{{ adguard_ui_port }}:3000'
     networks:
-      - brain_private
+      - brain_infra
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/ 2>/dev/null || exit 1"]
       interval: 30s
@@ -310,7 +310,7 @@ services:
     volumes:
       - {{ pi_stack_dir }}/bientot/data:/data
     networks:
-      - brain_private
+      - brain_infra
     healthcheck:
       test: ["CMD", "bientot-server", "healthcheck"]
       interval: 30s
@@ -321,6 +321,8 @@ services:
     image: {{ bientot_agent_image }}:{{ bientot_agent_version }}
     container_name: bientot-agent-local
     restart: unless-stopped
+    depends_on:
+      - docker-proxy
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -331,10 +333,9 @@ services:
     env_file:
       - /mnt/tank/stack/bientot-agent-pi.env
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - {{ pi_stack_dir }}/backup/status:/status:ro
     networks:
-      - brain_private
+      - brain_infra
     healthcheck:
       test: ["CMD", "bientot-agent", "healthcheck"]
       interval: 30s
@@ -361,9 +362,51 @@ services:
     ports:
       - '{{ netbird_bind_ip }}:{{ veille_secu_web_port }}:{{ veille_secu_web_port }}'
     networks:
-      - brain_private
+      - brain_infra
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:{{ veille_secu_web_port }}/')\" 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ══ DOCKER SOCKET PROXY ════════════════════════════════════════════════════
+  # Protège le socket Docker — seuls les endpoints lecture sont exposés.
+  # L'agent Bientôt Pi passe par ce proxy (pas de montage direct du socket).
+
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:{{ docker_socket_proxy_version }}
+    container_name: docker-proxy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: 1
+      VERSION: 1
+      NETWORKS: 0
+      VOLUMES: 0
+      SERVICES: 0
+      POST: 0
+      BUILD: 0
+      COMMIT: 0
+      CONFIGS: 0
+      DISTRIBUTION: 0
+      EXEC: 0
+      IMAGES: 0
+      NODES: 0
+      PLUGINS: 0
+      SECRETS: 0
+      SESSION: 0
+      SWARM: 0
+      SYSTEM: 0
+      TASKS: 0
+    networks:
+      - brain_infra
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:2375/version || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -379,15 +422,13 @@ services:
     cap_drop:
       - ALL
     pid: host
-    ports:
-      - '{{ netbird_bind_ip }}:9100:9100'
     volumes:
       - /:/host:ro,rslave
     command:
       - '--path.rootfs=/host'
       - '--collector.zfs'
     networks:
-      - brain_private
+      - brain_infra
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:9100/metrics 2>/dev/null || exit 1"]
       interval: 30s
@@ -399,9 +440,13 @@ networks:
     driver: bridge
     name: brain_public
 
-  brain_private:
+  brain_services:
     driver: bridge
-    name: brain_private
+    name: brain_services
+
+  brain_infra:
+    driver: bridge
+    name: brain_infra
 
   brain_vault:
     driver: bridge

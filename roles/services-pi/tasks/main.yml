@@ -6,10 +6,11 @@
 # Données persistantes → /mnt/tank/stack  (ZFS mirror NVMe)
 # Images Docker        → /var/lib/docker  (SD card 64Go)
 #
-# Trois réseaux Docker isolés :
-#   brain_public  — BentoPDF, Portfolio (accessibles via VPS → mesh)
-#   brain_private — Seafile, Immich, AdGuard, Bientôt, veille-secu, DBs
-#   brain_vault   — Vaultwarden SEUL (isolé)
+# Quatre réseaux Docker isolés :
+#   brain_public   — BentoPDF, Portfolio (accessibles via VPS → mesh)
+#   brain_services — Seafile+DB+memcached, Immich+DB+Redis (données utilisateur)
+#   brain_infra    — AdGuard, Bientôt, veille-secu, node-exporter, docker-proxy (monitoring/infra)
+#   brain_vault    — Vaultwarden SEUL (isolé)
 #
 # Usage :
 #   --tags services-pi    → redéploie toute la stack

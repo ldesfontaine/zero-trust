@@ -1,9 +1,12 @@
 ---
 - name: Reload Docker Stack VPS
   shell: "cd {{ stack_dir }} && docker compose up -d --remove-orphans"
+  register: _compose_reload_vps
+  changed_when: "'Started' in _compose_reload_vps.stderr or 'Created' in _compose_reload_vps.stderr"
 
 - name: Restart CrowdSec
   shell: "cd {{ stack_dir }} && docker compose restart crowdsec"
+  changed_when: false
 
 - name: Restart Bouncer
   systemd:

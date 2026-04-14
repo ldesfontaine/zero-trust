@@ -42,9 +42,9 @@
 # --- Firewall UFW ---
 # UFW skip en check mode : binaire pas encore installé lors du premier run
 
-- name: UFW - Autoriser SSH (port custom)
+- name: UFW - Limiter SSH (rate limit brute-force — 6 connexions/30s)
   ufw:
-    rule: allow
+    rule: limit
     port: "{{ vault_pi_ssh_port | string }}"
     proto: tcp
   when: not ansible_check_mode

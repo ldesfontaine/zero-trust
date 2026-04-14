@@ -1,4 +1,4 @@
 ---
 - name: Recharger les règles udev
   command: udevadm control --reload-rules
-  changed_when: true
+  changed_when: false

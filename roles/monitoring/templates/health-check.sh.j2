@@ -106,6 +106,28 @@ else
 fi
 {% endif %}
 
+{% if alerting_check_zfs_snapshot | default(false) %}
+# --- ZFS snapshot hourly freshness ---
+LATEST_HOURLY=$(zfs list -t snapshot -o name,creation -s creation -r {{ zfs_pool | default('tank') }} 2>/dev/null \
+  | grep "autosnap-hourly" | tail -1 | awk '{print $2, $3, $4, $5, $6}')
+if [ -n "${LATEST_HOURLY}" ]; then
+  SNAP_EPOCH=$(date -d "${LATEST_HOURLY}" +%s 2>/dev/null || echo 0)
+  NOW_EPOCH=$(date +%s)
+  HOURS_AGO=$(( (NOW_EPOCH - SNAP_EPOCH) / 3600 ))
+  if (( HOURS_AGO > {{ alert_zfs_snapshot_stale_hours | default(2) }} )); then
+    if should_alert "zfs-snapshot-hourly"; then
+      notify "Snapshot ZFS en retard" "Dernier snapshot hourly il y a ${HOURS_AGO}h (seuil : {{ alert_zfs_snapshot_stale_hours | default(2) }}h)" "high" "warning"
+    fi
+  else
+    clear_alert "zfs-snapshot-hourly"
+  fi
+else
+  if should_alert "zfs-snapshot-hourly-missing"; then
+    notify "Snapshot ZFS absent" "Aucun snapshot hourly trouvé sur {{ zfs_pool | default('tank') }}" "urgent" "rotating_light"
+  fi
+fi
+{% endif %}
+
 {% if alerting_check_backup_vps %}
 # --- Backup VPS stale ---
 STATUS_FILE="{{ backup_status_dir | default('/mnt/tank/stack/backup/status') }}/vps-latest.json"

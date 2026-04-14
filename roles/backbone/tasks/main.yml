@@ -7,15 +7,11 @@
 ---
 
 # -- Réseau partagé sentinel_net (idempotent) --------------------------------
-- name: Vérifier si le réseau sentinel_net existe
-  shell: "docker network inspect sentinel_net"
-  register: sentinel_net_check
-  changed_when: false
-  failed_when: false
-
 - name: Créer le réseau Docker sentinel_net
-  shell: "docker network create --driver bridge sentinel_net"
-  when: sentinel_net_check.rc != 0
+  community.docker.docker_network:
+    name: sentinel_net
+    driver: bridge
+    state: present
 
 # -- Arborescence backbone ---------------------------------------------------
 - name: Créer les dossiers backbone
@@ -53,10 +49,16 @@
     path: "/opt/stack/netbird/data"
   register: old_netbird_data
 
+- name: Vérifier si la migration NetBird a déjà été faite
+  stat:
+    path: "{{ backbone_dir }}/netbird/data/.migrated"
+  register: netbird_migration_done
+
 - name: Migrer les données NetBird depuis l'ancienne stack
-  shell: "cp -a /opt/stack/netbird/data/* {{ backbone_dir }}/netbird/data/"
-  when: old_netbird_data.stat.exists and old_netbird_data.stat.isdir
-  changed_when: true
+  shell: "cp -a /opt/stack/netbird/data/* {{ backbone_dir }}/netbird/data/ && touch {{ backbone_dir }}/netbird/data/.migrated"
+  when:
+    - old_netbird_data.stat.exists and old_netbird_data.stat.isdir
+    - not netbird_migration_done.stat.exists
 
 - name: Corriger les permissions des données migrées
   file:

@@ -78,20 +78,21 @@ NetBird client (systemd)                ← Rôle: netbird-client
 |------|---------|---------------|-------|
 | 8090 | BentoPDF | brain_public | Public via VPS |
 | 8091 | Portfolio | brain_public | Public via VPS |
-| 8092 | Seafile | brain_private | VPN-only |
+| 8092 | Seafile | brain_services | VPN-only |
 | 8093 | Vaultwarden | **brain_vault** | VPN-only |
-| 8094 | Immich | brain_private | VPN-only |
-| 5353 | AdGuard DNS | brain_private | Mesh DNS |
-| 3000 | AdGuard UI | brain_private | VPN-only |
-| 3001 | Bientôt dashboard | brain_private | VPN-only (Traefik) |
-| 3002 | Bientôt agents | brain_private | Mesh direct (PAS Traefik) |
-| 9100 | node-exporter | brain_private | Localhost only |
+| 8096 | Immich | brain_services | VPN-only |
+| 5353 | AdGuard DNS | brain_infra | Mesh DNS |
+| 3000 | AdGuard UI | brain_infra | VPN-only |
+| 3001 | Bientôt dashboard | brain_infra | VPN-only (Traefik) |
+| 3002 | Bientôt agents | brain_infra | Mesh direct (PAS Traefik) |
+| 9100 | node-exporter | brain_infra | Docker DNS only (pas de port exposé) |
 
 ### Réseaux Docker
 
 ```
 brain_public   ← BentoPDF, Portfolio (publics via VPS)
-brain_private  ← Seafile+DB, Immich+DB+Redis, AdGuard, Bientôt, veille-secu, node-exporter
+brain_services ← Seafile+DB+memcached, Immich+DB+Redis (données utilisateur)
+brain_infra    ← AdGuard, Bientôt, veille-secu, node-exporter, docker-proxy (monitoring/infra)
 brain_vault    ← Vaultwarden SEUL (isolé, SQLite intégré)
 ```
 
@@ -101,14 +102,15 @@ brain_vault    ← Vaultwarden SEUL (isolé, SQLite intégré)
 |-----------|-------|--------|
 | bentopdf | `{{ bentopdf_image }}:{{ version }}` | brain_public |
 | portfolio | `ghcr.io/ldesfontaine/termfolio:{{ version }}` | brain_public |
-| seafile + seafile-db + memcached | Docker Hub | brain_private |
+| seafile + seafile-db + memcached | Docker Hub | brain_services |
 | vaultwarden | Docker Hub | **brain_vault** |
-| immich-server + immich-db + immich-redis | GHCR | brain_private |
-| adguard | Docker Hub | brain_private |
-| bientot-server | `ghcr.io/ldesfontaine/bientot-server:{{ version }}` | brain_private |
-| bientot-agent | `ghcr.io/ldesfontaine/bientot-agent:{{ version }}` | brain_private |
-| veille-secu | `ghcr.io/ldesfontaine/veille-secu:{{ version }}` | brain_private |
-| node-exporter | Docker Hub | brain_private |
+| immich-server + immich-db + immich-redis | GHCR | brain_services |
+| adguard | Docker Hub | brain_infra |
+| bientot-server | `ghcr.io/ldesfontaine/bientot-server:{{ version }}` | brain_infra |
+| bientot-agent | `ghcr.io/ldesfontaine/bientot-agent:{{ version }}` | brain_infra |
+| veille-secu | `ghcr.io/ldesfontaine/veille-secu:{{ version }}` | brain_infra |
+| node-exporter | Docker Hub | brain_infra |
+| docker-proxy | tecnativa/docker-socket-proxy | brain_infra |
 
 ---
 
