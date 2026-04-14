@@ -5,7 +5,7 @@
 
 mode: nftables
 pid_dir: /var/run/
-update_frequency: 10s
+update_frequency: {{ crowdsec_bouncer_update_freq }}
 daemonize: true
 
 # --- Logs ---
@@ -13,9 +13,9 @@ log_mode: file
 log_dir: /var/log/
 log_level: info
 log_compression: true
-log_max_size: 100
+log_max_size: {{ crowdsec_log_max_size_mb }}
 log_max_backups: 3
-log_max_age: 30
+log_max_age: {{ crowdsec_log_max_age_days }}
 
 # --- Connexion à la LAPI CrowdSec (dans Docker) ---
 api_url: http://127.0.0.1:8080/

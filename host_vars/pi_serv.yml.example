@@ -1,45 +1,67 @@
-# ============================================================================
-# Variables Pi (Cerveau) — Copier vers pi_serv.yml et remplir les valeurs
+# ══════════════════════════════════════════
+# CERVEAU (Pi) — Configuration spécifique
+# Copier vers pi_serv.yml et remplir les valeurs CHANGE_ME.
 # Chiffrer ensuite : ansible-vault encrypt host_vars/pi_serv.yml
-# ============================================================================
+# ══════════════════════════════════════════
 
-# --- Bootstrap Pi (Play 3 — Run 1 uniquement) ---
-vault_pi_bootstrap_user: "admin"
-vault_pi_bootstrap_password: "CHANGE_ME"
 
-# --- Connexion finale (Play 4) ---
-vault_pi_ip: "192.168.1.X"
-vault_pi_ssh_port: 2223
+# ── OBLIGATOIRE (Run 0 — bootstrap) ──────
+vault_pi_bootstrap_user: "CHANGE_ME"          # User initial du Pi (ex: pi, admin)
+vault_pi_bootstrap_password: "CHANGE_ME"      # Mot de passe initial
+vault_pi_ip: "CHANGE_ME"                      # IP LAN du Pi (ex: 192.168.1.42)
+vault_pi_ssh_port: 2222                       # Port SSH custom
 
-# --- Chemins ---
-pi_stack_dir: "/mnt/tank/stack"
+# ── OBLIGATOIRE (après enrollment NetBird) ──
+host_netbird_ip: "CHANGE_ME"                  # IP mesh du Pi (ex: 100.64.x.x)
 
-# --- Seafile ---
-vault_seafile_admin_email: "CHANGE_ME"         # ex: admin@example.com
+# ── OBLIGATOIRE (secrets services) ────────
+vault_seafile_admin_email: "CHANGE_ME"        # ex: admin@example.com
 vault_seafile_admin_password: "CHANGE_ME"
-vault_seafile_db_root_password: "CHANGE_ME"    # openssl rand -hex 16
-
-# --- Vaultwarden ---
-vault_vaultwarden_admin_token: "CHANGE_ME"     # openssl rand -base64 48
-
-# --- AdGuard Home ---
-vault_adguard_admin_user: "admin"
+vault_seafile_db_root_password: "CHANGE_ME"   # openssl rand -base64 32
+vault_vaultwarden_admin_token: "CHANGE_ME"    # openssl rand -base64 48
+vault_adguard_admin_user: "CHANGE_ME"
 vault_adguard_admin_password: "CHANGE_ME"
-# Générer le hash : python3 -c "import bcrypt; print(bcrypt.hashpw(b'<password>', bcrypt.gensalt(10)).decode())"
-vault_adguard_admin_password_hash: "CHANGE_ME"
+vault_adguard_admin_password_hash: "CHANGE_ME"  # python3 -c "import bcrypt; print(bcrypt.hashpw(b'PASSWORD', bcrypt.gensalt(rounds=12)).decode())"
+vault_immich_db_password: "CHANGE_ME"         # openssl rand -hex 32
+vault_netbird_api_token: "CHANGE_ME"          # Créé via le dashboard NetBird → Personal Access Tokens
+vault_bientot_token_pi: "CHANGE_ME"           # openssl rand -hex 32
+vault_bientot_token_vps: "CHANGE_ME"          # ⚠️ DOIT être IDENTIQUE à vault_bientot_token_vps du VPS
+vault_veille_token: "CHANGE_ME"               # openssl rand -hex 32
 
-# --- Immich ---
+
+# ── OPTIONNEL ─────────────────────────────
+
+# Chemins
+pi_stack_dir: "/mnt/tank/stack"               # Racine des données sur le pool ZFS
+
+# Immich (valeurs par défaut OK)
 vault_immich_db_user: "immich"
-vault_immich_db_password: "CHANGE_ME"       # openssl rand -hex 16
 vault_immich_db_name: "immich"
 
-# --- NetBird API Token ---
-# Générer : Dashboard NetBird → team > user → Personal Access Tokens
-vault_netbird_api_token: "CHANGE_ME"
+# Feature flags alerting
+alerting_check_disk: true
+alerting_check_ram: true
+alerting_check_cpu: true
+alerting_check_docker: true
+alerting_check_backup_vps: true               # Le Pi fait le backup → activer le check
+alerting_check_backup_usb: true               # Alerte si USB pas branché depuis X jours
+alerting_check_zfs: true                      # Le Pi a le ZFS → activer le check
+backup_vps_enabled: true                      # Backup GPG quotidien vers VPS
 
-# --- Bientôt ---
-vault_bientot_token_pi: "CHANGE_ME"            # openssl rand -hex 32
-vault_bientot_token_vps: "CHANGE_ME"           # même valeur que sur le VPS
+# Backup VPS — cron
+backup_vps_cron_hour: "3"                     # Heure du backup quotidien (UTC)
+backup_vps_cron_minute: "0"                   # Minute du backup quotidien
 
-# --- Veille sécu ---
-vault_veille_token: "CHANGE_ME"                # openssl rand -hex 32
+# AdGuard tuning
+adguard_dns_ratelimit: 20                     # Requêtes DNS/seconde par client
+adguard_dns_cache_size: 4194304               # Cache DNS en octets (4 Mo)
+adguard_auth_max_attempts: 5                  # Tentatives auth max avant blocage
+adguard_session_ttl: "720h"                   # Session admin (30 jours)
+
+# Memcached (Seafile)
+memcached_memory_mb: 256                      # RAM allouée (Mo)
+
+# Trivy → Bientôt (scan CVE dans le dashboard)
+trivy_bientot_url: "http://{{ vault_pi_netbird_ip }}:{{ bientot_agent_port }}"
+trivy_bientot_token: "{{ vault_bientot_token_pi }}"
+trivy_bientot_machine_id: "cerveau"           # Identifiant machine dans Bientôt

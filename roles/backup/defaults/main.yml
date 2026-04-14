@@ -1,38 +1,29 @@
 ---
 # ============================================================================
-# Backup — Variables par défaut
-# Surcharger dans host_vars/pi_serv.yml ou group_vars/all.yml
+# Backup — Variables internes
+# Les rétentions, feature flags et cron sont dans group_vars/all.yml
+# et host_vars/pi_serv.yml (source de vérité unique).
 # ============================================================================
 
 # --- Pool ZFS ---
 zfs_pool: "tank"
 
-# --- Répertoires ---
+# --- Répertoires (dérivés, rarement modifiés) ---
 backup_base_dir: "/mnt/tank/stack/backup"
 backup_status_dir: "{{ backup_base_dir }}/status"
 backup_staging_dir: "{{ backup_base_dir }}/staging"
 backup_log_dir: "/var/log/backup"
 
-# --- Backup VPS (quotidien, envoi chiffré GPG) ---
-backup_vps_enabled: true
-backup_vps_cron_hour: "3"
-backup_vps_cron_minute: "0"
+# --- Backup VPS (destinations dérivées) ---
 backup_vps_dest_host: "{{ vault_vps_netbird_ip }}"
 backup_vps_dest_dir: "/opt/backups/brain-01"
 backup_vps_dest_user: "{{ vault_ssh_user }}"
-backup_vps_retention_days: 7
 backup_vps_gpg_recipient: "backup@{{ vault_base_domain }}"
 
-# --- Snapshots ZFS automatiques ---
-zfs_snap_hourly_keep: 24
-zfs_snap_daily_keep: 7
-zfs_snap_monthly_keep: 6
-
-# --- Backup USB (déclenché manuellement par branchement) ---
+# --- Backup USB (config physique) ---
 backup_usb_luks_uuid: ""
 backup_usb_mount_point: "/mnt/backup-usb"
-backup_usb_snap_keep: 3
 
-# --- Notifications Ntfy ---
+# --- Notifications Ntfy (fallback si pas de variable vault) ---
 ntfy_backup_topic: "{{ vault_ntfy_backup_topic | default('backup') }}"
 ntfy_server_url: "{{ vault_ntfy_server_url | default('https://ntfy.' + vault_base_domain) }}"

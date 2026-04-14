@@ -38,7 +38,7 @@
   lineinfile:
     path: "{{ pi_stack_dir }}/adguard/conf/AdGuardHome.yaml"
     insertafter: '^\s+- https://dns\.google/dns-query'
-    line: '    - "[/home/]{{ livebox_ip }}"'
+    line: '    - "[/home/]{{ router_ip }}"'
     state: present
   when: adguard_conf_file.stat.exists
   notify: Restart AdGuard

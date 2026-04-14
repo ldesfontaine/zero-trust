@@ -43,8 +43,8 @@
   cron:
     name: "docker-image-maintenance"
     minute: "0"
-    hour: "4"
-    weekday: "0"
+    hour: "{{ docker_maintenance_cron_hour }}"
+    weekday: "{{ docker_maintenance_cron_weekday }}"
     job: "/opt/docker-image-maintenance.sh >> /var/log/docker-image-maintenance.log 2>&1"
     user: root
 

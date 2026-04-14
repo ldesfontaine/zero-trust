@@ -18,7 +18,7 @@ NTFY_URL="{{ ntfy_server_url }}/{{ ntfy_backup_topic }}"
 NTFY_AUTH="Authorization: Bearer {{ vault_ntfy_auth_token }}"
 SSH_KEY="{{ priv_ssh_key_path }}"
 SSH_OPTS="-o StrictHostKeyChecking=no -i ${SSH_KEY}"
-DISK_WARN_PCT=80
+DISK_WARN_PCT={{ backup_disk_warn_pct }}
 
 notify() {
   local title="$1" message="$2" priority="${3:-default}" tags="${4:-}"

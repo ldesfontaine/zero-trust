@@ -10,8 +10,8 @@ ListenAddress ::
 
 # --- Authentification ---
 PermitRootLogin no
-MaxAuthTries 3
-MaxSessions 5
+MaxAuthTries {{ ssh_max_auth_tries }}
+MaxSessions {{ ssh_max_sessions }}
 PubkeyAuthentication yes
 PasswordAuthentication no
 PermitEmptyPasswords no
@@ -25,8 +25,8 @@ AllowUsers {{ ssh_user }}
 # --- Timeouts ---
 LoginGraceTime 30
 TCPKeepAlive yes
-ClientAliveInterval 30
-ClientAliveCountMax 6
+ClientAliveInterval {{ ssh_client_alive_interval }}
+ClientAliveCountMax {{ ssh_client_alive_count_max }}
 
 # --- Concurrence (évite MaxStartups lors des runs Ansible) ---
 MaxStartups 20:50:100

@@ -9,11 +9,11 @@ http:
     port: 6060
     enabled: false
   address: 0.0.0.0:3000
-  session_ttl: 720h
+  session_ttl: {{ adguard_session_ttl }}
 users:
   - name: {{ vault_adguard_admin_user }}
     password: "{{ vault_adguard_admin_password_hash }}"
-auth_attempts: 5
+auth_attempts: {{ adguard_auth_max_attempts }}
 block_auth_min: 15
 theme: auto
 dns:
@@ -21,7 +21,7 @@ dns:
     - 0.0.0.0
   port: 53
   anonymize_client_ip: false
-  ratelimit: 20
+  ratelimit: {{ adguard_dns_ratelimit }}
   ratelimit_subnet_len_ipv4: 24
   ratelimit_subnet_len_ipv6: 56
   ratelimit_whitelist: []
@@ -29,7 +29,7 @@ dns:
   upstream_dns:
     - https://dns.cloudflare.com/dns-query
     - https://dns.google/dns-query
-    - "[/home/]{{ livebox_ip }}"
+    - "[/home/]{{ router_ip }}"
   upstream_dns_file: ""
   bootstrap_dns:
     - 1.1.1.1
@@ -47,7 +47,7 @@ dns:
   trusted_proxies:
     - 127.0.0.0/8
     - ::1/128
-  cache_size: 4194304
+  cache_size: {{ adguard_dns_cache_size }}
   cache_ttl_min: 0
   cache_ttl_max: 0
   cache_optimistic: false

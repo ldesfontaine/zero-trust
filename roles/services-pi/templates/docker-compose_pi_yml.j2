@@ -97,7 +97,7 @@ services:
     read_only: true
     tmpfs:
       - /tmp
-    entrypoint: memcached -m 256
+    entrypoint: memcached -m {{ memcached_memory_mb }}
     networks:
       - brain_private
     healthcheck:

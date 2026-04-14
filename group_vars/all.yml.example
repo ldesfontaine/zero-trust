@@ -1,79 +1,70 @@
-# ============================================================================
-# Variables globales — Copier vers all.yml et remplir les valeurs
+# ══════════════════════════════════════════
+# INFRASTRUCTURE ZERO TRUST — Configuration globale
+# Source de vérité unique pour les 2 machines.
+# Copier vers all.yml et remplir les valeurs CHANGE_ME.
 # Chiffrer ensuite : ansible-vault encrypt group_vars/all.yml
-# ============================================================================
+# ══════════════════════════════════════════
 
-# --- Versions Docker images ---
-traefik_version: "v2.11"
-crowdsec_version: "v1.6.8"
-netbird_server_version: "0.36.5"
-netbird_dashboard_version: "2.9.0"
-node_exporter_version: "v1.9.0"
-mariadb_version: "11"
-seafile_version: "11.0-latest"
-memcached_version: "1.6"
-vaultwarden_version: "1.32.1"
-adguard_version: "v0.107.55"
-bentopdf_image: "ghcr.io/alam00000/bentopdf"
-bentopdf_version: "sha-latest"  # Épingler : ghcr.io/alam00000/bentopdf → remplacer par sha-<commit> stable
-ntfy_version: "v2.11.0"
-docker_socket_proxy_version: "0.2.0"
-# --- Images perso : latest intentionnel — image-maintenance met à jour auto (dimanche 04:00 UTC)
-portfolio_image: "ghcr.io/ldesfontaine/termfolio"
-portfolio_version: "latest"
-bientot_server_image: "ghcr.io/ldesfontaine/bientot-server"
-bientot_server_version: "latest"
-bientot_agent_image: "ghcr.io/ldesfontaine/bientot-agent"
-bientot_agent_version: "latest"
-veille_secu_image: "ghcr.io/ldesfontaine/vielle-technologique"
-veille_secu_version: "latest"
-immich_version: "v1.134.0"
-immich_redis_version: "7-alpine"
-immich_db_image: "ghcr.io/immich-app/postgres"
-immich_db_version: "14-vectorchord0.3.0-pgvectors0.2.0"
 
-# --- Domaine de base ---
-vault_base_domain: "CHANGE_ME"                 # ex: example.com
-vault_admin_email: "CHANGE_ME"                 # ex: admin@example.com
+# ══════════════════════════════════════════
+# DOMAINES ET RÉSEAU
+# ══════════════════════════════════════════
 
-# --- Sous-domaines VPS (exposés publiquement via Traefik + Let's Encrypt) ---
+# ── OBLIGATOIRE ───────────────────────────
+vault_base_domain: "CHANGE_ME"                # Domaine principal (ex: example.com)
+vault_admin_email: "CHANGE_ME"                # Email admin Let's Encrypt (ex: admin@example.com)
+vault_ssh_user: "CHANGE_ME"                   # User admin SSH sur les 2 machines
+vault_vps_mgmt_ip: "CHANGE_ME"               # IP publique du VPS
+
+# Sous-domaines (tous pointent vers l'IP publique VPS)
 netbird_subdomain: "mesh"
-
-# --- Sous-domaines Pi publics (exposés via VPS → mesh → Pi) ---
+ntfy_subdomain: "ntfy"
+seafile_subdomain: "cloud"
+vaultwarden_subdomain: "vault"
+immich_subdomain: "photos"
+adguard_subdomain: "adguard"
+bientot_subdomain: "bientot"
 bentopdf_subdomain: "pdf"
 portfolio_subdomain: "portfolio"
 
-# --- Sous-domaines Pi privés (accessibles uniquement via client NetBird) ---
-seafile_subdomain: "cloud"
-vaultwarden_subdomain: "vault"
-adguard_subdomain: "adguard"
-immich_subdomain: "photos"
-bientot_subdomain: "bientot"
-
-# --- Sous-domaines VPS privés (accessibles via client NetBird) ---
-ntfy_subdomain: "ntfy"
-
-# --- FQDNs dérivés (calculés — ne pas modifier) ---
+# FQDNs dérivés (calculés — ne pas modifier)
 netbird_fqdn: "{{ netbird_subdomain }}.{{ vault_base_domain }}"
 
-# --- SSH ---
-ssh_key_path: "~/.ssh/id_ed25519_vps_homelab.pub"
-priv_ssh_key_path: "~/.ssh/id_ed25519_vps_homelab"
+# NetBird IPs WireGuard (aliases cross-host)
+# La source de vérité est host_netbird_ip dans chaque host_vars/.
+# Ces variables dérivées permettent aux templates cross-host (bientot.env,
+# traefik_dynamic, netbird-acl) de référencer l'IP d'une autre machine.
+vault_vps_netbird_ip: "{{ hostvars['vps_serv'].host_netbird_ip | default('CHANGE_ME') }}"
+vault_pi_netbird_ip: "{{ hostvars['pi_serv'].host_netbird_ip | default('CHANGE_ME') }}"
 
-# --- User deploy (CI/CD) ---
+# ── OPTIONNEL ─────────────────────────────
+vault_ssh_port: 2222                          # Port SSH custom (identique VPS + Pi)
+vault_pi_ssh_user: "lucas"                    # User SSH sur le Pi (si différent de vault_ssh_user)
+router_ip: "192.168.1.1"                     # IP du routeur/Livebox (split DNS .home AdGuard)
+
+
+# ══════════════════════════════════════════
+# SSH ET DÉPLOIEMENT
+# ══════════════════════════════════════════
+
+# ── OBLIGATOIRE ───────────────────────────
+ssh_key_path: "~/.ssh/id_ed25519_vps_homelab.pub"    # Clé publique admin
+priv_ssh_key_path: "~/.ssh/id_ed25519_vps_homelab"   # Clé privée admin (backup, restore, connection-resolver)
+
+# User deploy (CI/CD)
 vault_deploy_user: "deploy"
-deploy_ssh_key_path: "~/.ssh/id_ed25519_deploy.pub"
+deploy_ssh_key_path: "~/.ssh/id_ed25519_deploy.pub"  # Clé publique user deploy
 
-# --- Repo Ansible sur le VPS (cloné par le user deploy au bootstrap) ---
-deploy_repo_url: "https://github.com/ldesfontaine/deployVps.git"
+# Repo Ansible sur le VPS (cloné par le user deploy au bootstrap)
+deploy_repo_url: "https://github.com/ldesfontaine/zero-trust.git"
 deploy_repo_path: "/home/deploy/deployVps"
 
-# --- Connexion finale (Play 4) ---
-vault_ssh_user: "lucas"
-vault_ssh_port: 2222
-vault_pi_ssh_user: "lucas"
 
-# --- Ports applicatifs (Pi via VPS) ---
+# ══════════════════════════════════════════
+# PORTS DES SERVICES
+# ══════════════════════════════════════════
+
+# Ports de binding sur le Pi (IP NetBird uniquement)
 # Source unique pour nftables, Docker compose, Traefik et ACLs NetBird
 bentopdf_port: "8090"
 portfolio_port: "8091"
@@ -82,30 +73,138 @@ vaultwarden_port: "8093"
 veille_secu_web_port: "8094"
 immich_port: "8096"
 adguard_ui_port: "3000"
-bientot_port: "3001"
-bientot_agent_port: "3002"
+bientot_port: "3001"                          # Dashboard (Traefik)
+bientot_agent_port: "3002"                    # Push agents (mesh direct)
 
-# --- Config veille-sécu (variables lues par le container) ---
+
+# ══════════════════════════════════════════
+# VERSIONS DES IMAGES DOCKER
+# ══════════════════════════════════════════
+
+# ── OBLIGATOIRE (épingler sur un tag semver) ──
+
+# Images tierces
+traefik_version: "v3.1"
+crowdsec_version: "v1.6.8"
+ntfy_version: "v2.11.0"
+node_exporter_version: "v1.9.0"
+docker_socket_proxy_version: "0.2.0"
+netbird_server_version: "0.36.5"
+netbird_dashboard_version: "2.9.0"
+mariadb_version: "11"
+seafile_version: "11.0-latest"
+memcached_version: "1.6"
+vaultwarden_version: "1.32.1"
+adguard_version: "v0.107.55"
+immich_version: "v1.134.0"
+immich_redis_version: "7-alpine"
+immich_db_image: "ghcr.io/immich-app/postgres"
+immich_db_version: "14-vectorchord0.3.0-pgvectors0.2.0"
+
+# Images perso GHCR — image-maintenance fait trivy scan + docker image prune
+portfolio_image: "ghcr.io/ldesfontaine/termfolio"
+portfolio_version: "0.0.1"
+bientot_server_image: "ghcr.io/ldesfontaine/bientot-server"
+bientot_server_version: "0.0.1"
+bientot_agent_image: "ghcr.io/ldesfontaine/bientot-agent"
+bientot_agent_version: "0.0.1"
+veille_secu_image: "ghcr.io/ldesfontaine/vielle-technologique"
+veille_secu_version: "0.0.1"
+bentopdf_image: "ghcr.io/alam00000/bentopdf"
+bentopdf_version: "sha-latest"                # TODO: épingler sur un tag stable
+
+
+# ══════════════════════════════════════════
+# CONFIG VEILLE-SÉCU
+# ══════════════════════════════════════════
+
+# ── OPTIONNEL ─────────────────────────────
 veille_secu_watch_stack: "traefik,seafile,vaultwarden,docker,linux,netbird,crowdsec"
-veille_secu_cron_interval: "3600"
-veille_secu_ntfy_topic: "veille-secu"
-veille_secu_manual_cooldown: "900"
+veille_secu_cron_interval: "3600"             # Intervalle de scraping (secondes)
+veille_secu_ntfy_topic: "veille-secu"         # Topic Ntfy dédié
+veille_secu_manual_cooldown: "900"            # Cooldown entre 2 scans manuels (secondes)
 
-# --- Domaines à vérifier pour l'expiration TLS (optionnel) ---
-cert_check_domains: "{{ bentopdf_subdomain }}.{{ vault_base_domain }},{{ portfolio_subdomain }}.{{ vault_base_domain }},{{ seafile_subdomain }}.{{ vault_base_domain }},{{ vaultwarden_subdomain }}.{{ vault_base_domain }}"
 
-# --- Config portfolio ---
+# ══════════════════════════════════════════
+# CONFIG PORTFOLIO
+# ══════════════════════════════════════════
+
+# ── OPTIONNEL ─────────────────────────────
 portfolio_site_url: "https://{{ portfolio_subdomain }}.{{ vault_base_domain }}"
 
-# --- NetBird IPs WireGuard (aliases cross-host) ---
-# La source de verite est host_netbird_ip dans chaque host_vars/.
-# Ces variables derivees permettent aux templates cross-host (bientot.env,
-# traefik_dynamic, netbird-acl) de referencer l'IP d'une autre machine.
-vault_vps_netbird_ip: "{{ hostvars['vps_serv'].host_netbird_ip | default('CHANGE_ME') }}"
-vault_pi_netbird_ip: "{{ hostvars['pi_serv'].host_netbird_ip | default('CHANGE_ME') }}"
 
-# --- Réseau local ---
-livebox_ip: "192.168.1.1"                      # IP du routeur/Livebox (split DNS .home)
+# ══════════════════════════════════════════
+# CERTIFICATS TLS (module Bientôt certificates)
+# ══════════════════════════════════════════
 
-# --- IP publique VPS ---
-vault_vps_mgmt_ip: "CHANGE_ME"                 # IP publique de ton VPS
+# ── OPTIONNEL ─────────────────────────────
+cert_check_domains: "{{ bentopdf_subdomain }}.{{ vault_base_domain }},{{ portfolio_subdomain }}.{{ vault_base_domain }},{{ seafile_subdomain }}.{{ vault_base_domain }},{{ vaultwarden_subdomain }}.{{ vault_base_domain }}"
+
+
+# ══════════════════════════════════════════
+# SEUILS D'ALERTE (monitoring)
+# ══════════════════════════════════════════
+
+# ── OPTIONNEL (valeurs par défaut sûres) ──
+alert_disk_critical_pct: 80                   # Disque : alerte critique au-delà de ce %
+alert_ram_warning_pct: 85                     # RAM : alerte au-delà de ce %
+alert_cpu_warning_pct: 90                     # CPU : alerte au-delà de ce %
+alert_cpu_duration_min: 5                     # CPU : minutes avant déclenchement alerte
+alert_backup_stale_hours: 48                  # Backup VPS : alerte si plus vieux que X heures
+alert_backup_usb_stale_days: 30               # Backup USB : alerte si plus vieux que X jours
+alert_tls_expire_days: 7                      # TLS : alerte si expiration dans X jours
+alert_dedup_window_seconds: 1800              # Fenêtre déduplication alertes (30 min)
+alerting_check_interval_min: "5"              # Cron health-check : intervalle en minutes
+
+
+# ══════════════════════════════════════════
+# POLITIQUE DE RÉTENTION (backup)
+# ══════════════════════════════════════════
+
+# ── OPTIONNEL ─────────────────────────────
+backup_vps_retention_days: 7                  # Rétention backup GPG sur le VPS (jours)
+backup_disk_warn_pct: 80                      # Seuil disque dans le script backup
+zfs_snap_hourly_keep: 24                      # Snapshots ZFS horaires à garder
+zfs_snap_daily_keep: 7                        # Snapshots ZFS journaliers à garder
+zfs_snap_monthly_keep: 6                      # Snapshots ZFS mensuels à garder
+backup_usb_snap_keep: 3                       # Snapshots USB à garder
+
+
+# ══════════════════════════════════════════
+# MAINTENANCE DOCKER
+# ══════════════════════════════════════════
+
+# ── OPTIONNEL ─────────────────────────────
+docker_image_prune_age: "168h"                # Suppression images non utilisées > 7 jours
+docker_maintenance_cron_hour: "4"             # Heure du cron maintenance (UTC)
+docker_maintenance_cron_weekday: "0"          # Jour du cron (0=dimanche)
+
+
+# ══════════════════════════════════════════
+# TRAEFIK
+# ══════════════════════════════════════════
+
+# ── OPTIONNEL ─────────────────────────────
+traefik_rate_limit_average: 50                # Rate limit services publics (req/s)
+traefik_rate_limit_burst: 100                 # Burst max
+traefik_hsts_max_age: 31536000                # HSTS max-age en secondes (1 an)
+
+
+# ══════════════════════════════════════════
+# SSH HARDENING
+# ══════════════════════════════════════════
+
+# ── OPTIONNEL ─────────────────────────────
+ssh_max_auth_tries: 3                         # Tentatives max avant déconnexion
+ssh_max_sessions: 5                           # Sessions simultanées max
+ssh_client_alive_interval: 30                 # Keepalive SSH (secondes)
+ssh_client_alive_count_max: 6                 # Keepalives sans réponse avant déconnexion
+
+
+# ══════════════════════════════════════════
+# CROWDSEC
+# ══════════════════════════════════════════
+
+# ── OPTIONNEL ─────────────────────────────
+crowdsec_log_max_size_mb: 100                 # Taille max log bouncer (MB)
+crowdsec_log_max_age_days: 30                 # Rétention logs bouncer (jours)

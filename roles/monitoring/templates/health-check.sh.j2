@@ -24,7 +24,7 @@ should_alert() {
   if [ -f "${state_file}" ]; then
     local last
     last=$(cat "${state_file}")
-    if (( now - last < 1800 )); then
+    if (( now - last < {{ alert_dedup_window_seconds }} )); then
       return 1
     fi
   fi

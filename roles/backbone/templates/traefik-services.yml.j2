@@ -36,7 +36,7 @@ http:
         contentTypeNosniff: true
         frameDeny: true
         stsIncludeSubdomains: true
-        stsSeconds: 31536000
+        stsSeconds: {{ traefik_hsts_max_age }}
         stsPreload: true
         customResponseHeaders:
           X-Robots-Tag: "noindex,nofollow"
@@ -45,8 +45,8 @@ http:
     # Rate limiting — services publics uniquement (pas derrière VPN)
     rate-limit-public:
       rateLimit:
-        average: 50
-        burst: 100
+        average: {{ traefik_rate_limit_average }}
+        burst: {{ traefik_rate_limit_burst }}
         period: 1m
 
   # ── Routers ────────────────────────────────────────────────────────────────

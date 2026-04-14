@@ -1,30 +1,45 @@
-# ============================================================================
-# Variables VPS (Sentinelle) — Copier vers vps_serv.yml et remplir les valeurs
+# ══════════════════════════════════════════
+# SENTINELLE (VPS) — Configuration spécifique
+# Copier vers vps_serv.yml et remplir les valeurs CHANGE_ME.
 # Chiffrer ensuite : ansible-vault encrypt host_vars/vps_serv.yml
-# ============================================================================
+# ══════════════════════════════════════════
 
-# --- Connexion finale (Play 2) ---
-vault_ssh_password: "CHANGE_ME"    # Mot de passe root OVH (Run 1 uniquement)
 
-# --- NetBird (source de verite per-host) ---
-host_netbird_ip: "CHANGE_ME"    # Renseigner apres enrollment NetBird (IP WireGuard VPS)
+# ── OBLIGATOIRE (Run 0 — bootstrap) ──────
+vault_ssh_password: "CHANGE_ME"               # Mot de passe root initial du provider
 
-# --- Chemins ---
-backbone_dir: "/opt/backbone"       # Stack L3 (Traefik + NetBird server)
-stack_dir: "/opt/sentinel"           # Stack L4 (CrowdSec, Ntfy, node-exporter)
+# ── OBLIGATOIRE (après enrollment NetBird) ──
+host_netbird_ip: "CHANGE_ME"                  # IP mesh du VPS (ex: 100.64.x.x)
 
-# --- CrowdSec ---
-vault_crowdsec_lapi_key: "CHANGE_ME"           # openssl rand -hex 16
+# ── OBLIGATOIRE (secrets) ─────────────────
+vault_crowdsec_lapi_key: "CHANGE_ME"          # openssl rand -hex 32
+vault_crowdsec_bientot_key: "CHANGE_ME"       # openssl rand -hex 32 (watcher Bientôt)
+vault_admin_public_ip: "CHANGE_ME"            # IP publique admin (whitelist CrowdSec)
+vault_ntfy_auth_token: "CHANGE_ME"            # Token Bearer Ntfy (créé manuellement post-deploy)
+vault_netbird_datastore_key: "CHANGE_ME"      # openssl rand -base64 32
+vault_netbird_relay_secret: "CHANGE_ME"       # openssl rand -hex 32
+vault_bientot_token_vps: "CHANGE_ME"          # openssl rand -hex 32
 
-# --- Sécurité ---
-vault_admin_public_ip: "CHANGE_ME"             # IP publique admin (whitelist CrowdSec)
 
-# --- Ntfy ---
-vault_ntfy_auth_token: "CHANGE_ME"             # Token Bearer pour les notifications
+# ── OPTIONNEL ─────────────────────────────
 
-# --- NetBird Server ---
-vault_netbird_datastore_key: "CHANGE_ME"       # openssl rand -base64 32
-vault_netbird_relay_secret: "CHANGE_ME"        # openssl rand -base64 32
+# Chemins (valeurs par défaut sûres)
+backbone_dir: "/opt/backbone"                 # Stack L3 (Traefik + NetBird server)
+stack_dir: "/opt/sentinel"                    # Stack L4 (CrowdSec, Ntfy, node-exporter)
 
-# --- Bientôt ---
-vault_bientot_token_vps: "CHANGE_ME"           # openssl rand -hex 32
+# Feature flags alerting
+alerting_check_disk: true
+alerting_check_ram: true
+alerting_check_cpu: true
+alerting_check_docker: true
+alerting_check_backup_vps: false              # Pas de backup sur le VPS
+alerting_check_backup_usb: false
+alerting_check_zfs: false
+
+# CrowdSec bouncer tuning
+crowdsec_bouncer_update_freq: "10s"           # Fréquence sync bouncer ↔ LAPI
+
+# Trivy → Bientôt (scan CVE dans le dashboard)
+trivy_bientot_url: "http://{{ vault_pi_netbird_ip }}:{{ bientot_agent_port }}"
+trivy_bientot_token: "{{ vault_bientot_token_vps }}"
+trivy_bientot_machine_id: "sentinelle"        # Identifiant machine dans Bientôt
