@@ -43,6 +43,13 @@ Voir [docs/09-ADD-SERVICE.md](docs/09-ADD-SERVICE.md) — checklist complète (D
 - [docs/08-BOOTSTRAP.md](docs/08-BOOTSTRAP.md) — premier démarrage, token API NetBird
 - [docs/09-ADD-SERVICE.md](docs/09-ADD-SERVICE.md) — checklist nouveau service
 
+## Hooks git
+À activer après chaque clone (config locale, non versionnée) :
+```bash
+git config core.hooksPath .githooks
+```
+Active le hook `pre-commit` qui refuse tout `vault.yml` non chiffré (détection `$ANSIBLE_VAULT`).
+
 ## Rôles disponibles
 - [base](roles/base/) — socle système (paquets, users, SSH durci, nftables)
 - [docker](roles/docker/) — engine + daemon + socket-proxy Tecnativa
