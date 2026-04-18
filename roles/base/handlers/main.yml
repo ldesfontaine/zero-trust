@@ -1,0 +1,2 @@
+# Handlers du role base
+# (vide — SSH et nftables sont geres inline dans leurs tasks)

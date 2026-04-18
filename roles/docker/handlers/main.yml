@@ -1,0 +1,12 @@
+# Handlers du role docker
+
+- name: Redemarrer docker
+  ansible.builtin.systemd:
+    name: docker
+    state: restarted
+
+- name: Redemarrer socket proxy
+  community.docker.docker_compose_v2:
+    project_src: "{{ docker_socket_proxy_dir }}"
+    state: present
+    recreate: always

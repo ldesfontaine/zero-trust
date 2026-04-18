@@ -1,0 +1,40 @@
+# ============================================================
+# BentoPDF — toolkit PDF client-side
+#
+# nginx-unprivileged qui sert des fichiers statiques (HTML/JS/WASM).
+# Tout le traitement PDF se fait dans le navigateur du visiteur.
+# Serveur 100% stateless : pas de volume, pas de DB, pas d'uploads
+# cote serveur.
+# ============================================================
+
+- name: "BentoPDF — Creer le repertoire du module"
+  ansible.builtin.file:
+    path: "{{ bentopdf_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Check de drift AVANT de templater le compose.
+# Si le reseau existe deja avec internal:false et qu'on attend true
+# (ou inversement), Docker Compose ne le recreera PAS silencieusement.
+# Le fail explicite evite des heures de debug.
+- name: "BentoPDF — Verifier le drift reseau"
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../roles/_shared/tasks/check_network_drift.yml"
+  vars:
+    network_name: "{{ bentopdf_network_name }}"
+    network_internal: true
+
+- name: "BentoPDF — Deployer le docker-compose"
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ bentopdf_data_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Redemarrer bentopdf
+
+- name: "BentoPDF — Lancer le container"
+  community.docker.docker_compose_v2:
+    project_src: "{{ bentopdf_data_dir }}"
+    state: present

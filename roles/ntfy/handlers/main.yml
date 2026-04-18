@@ -1,0 +1,6 @@
+# Handlers du role ntfy
+
+- name: Redemarrer ntfy
+  community.docker.docker_compose_v2:
+    project_src: "{{ ntfy_data_dir }}"
+    state: restarted

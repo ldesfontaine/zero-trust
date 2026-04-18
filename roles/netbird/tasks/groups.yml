@@ -1,0 +1,54 @@
+# Creation des groupes NetBird via API REST
+# Idempotent : ne cree que les groupes manquants.
+
+# Apres un demarrage fresh, l'API met quelques secondes a repondre
+- name: "NetBird Config — Attendre que l'API soit prete"
+  ansible.builtin.uri:
+    url: "{{ netbird_config_api_url }}/groups"
+    method: GET
+    headers:
+      Authorization: "Token {{ vault_netbird_api_token }}"
+      Accept: "application/json"
+    status_code: 200
+  register: netbird_config_api_check
+  until: netbird_config_api_check.status == 200
+  retries: 12
+  delay: 5
+
+- name: "NetBird Config — Extraire les noms des groupes existants"
+  ansible.builtin.set_fact:
+    netbird_config_existing_group_names: >-
+      {{ netbird_config_api_check.json | map(attribute='name') | list }}
+
+- name: "NetBird Config — Creer les groupes manquants"
+  ansible.builtin.uri:
+    url: "{{ netbird_config_api_url }}/groups"
+    method: POST
+    headers:
+      Authorization: "Token {{ vault_netbird_api_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body: '{"name": "{{ netbird_config_group_item }}"}'
+    status_code: 200
+  loop: "{{ netbird_config_groups }}"
+  loop_control:
+    loop_var: netbird_config_group_item
+  when: netbird_config_group_item not in netbird_config_existing_group_names
+
+# Relire les groupes pour avoir tous les IDs (y compris ceux deja existants)
+- name: "NetBird Config — Relire les groupes avec leurs IDs"
+  ansible.builtin.uri:
+    url: "{{ netbird_config_api_url }}/groups"
+    method: GET
+    headers:
+      Authorization: "Token {{ vault_netbird_api_token }}"
+      Accept: "application/json"
+    status_code: 200
+  register: netbird_config_all_groups
+
+# Construire un dict nom → ID pour les policies
+- name: "NetBird Config — Stocker la map groupe → ID"
+  ansible.builtin.set_fact:
+    netbird_config_group_ids: >-
+      {{ dict(netbird_config_all_groups.json | map(attribute='name')
+              | zip(netbird_config_all_groups.json | map(attribute='id'))) }}

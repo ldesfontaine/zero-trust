@@ -1,0 +1,23 @@
+# Versions pinnees — source de verite
+# NON VAULT — editable depuis GitHub mobile
+# Chaque version = un tag d'image sur GHCR ou Docker Hub
+# Ansible charge ce fichier automatiquement via group_vars/all/
+
+# --- Images custom (GHCR) ---
+portfolio_version: "0.0.1"
+bientot_agent_version: "v0.8.2"
+bientot_master_version: "v0.8.2"
+veille_secu_version: "v2.1.0"
+
+# --- Images tierces (Docker Hub) ---
+traefik_version: "3.6"
+crowdsec_version: "1.6.3"
+vaultwarden_version: "1.35.7"
+seafile_version: "11.0.13"
+immich_version: "1.99.0"
+adguard_version: "0.107.52"
+ntfy_version: "2.11.0"
+bentopdf_version: "1.2.0"
+netbird_server_version: "latest"
+netbird_server_dashboard_version: "v2.36.0"
+docker_socket_proxy_version: "0.1.2"

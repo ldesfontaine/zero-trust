@@ -1,0 +1,9 @@
+# Valeurs par defaut du role portfolio
+# Peuvent etre surchargees dans host_vars/<machine>.yml
+
+portfolio_version: "0.0.1"  # source de verite : inventory/group_vars/all/versions.yml
+portfolio_image: "ghcr.io/ldesfontaine/termfolio"
+portfolio_domain: "portfolio.{{ base_domain }}"
+portfolio_network_name: "portfolio-net"
+portfolio_port: 3000
+portfolio_data_dir: "/opt/modules/portfolio"

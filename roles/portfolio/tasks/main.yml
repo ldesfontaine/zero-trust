@@ -1,0 +1,35 @@
+# ============================================================
+# Portfolio — site personnel statique
+#
+# Container read-only, reseau isole (internal: true).
+# Route par Traefik Edge via labels Docker.
+# Pas de .env (aucun secret).
+# ============================================================
+
+- name: "Portfolio — Creer le repertoire du module"
+  ansible.builtin.file:
+    path: "{{ portfolio_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "Portfolio — Verifier le drift reseau"
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../roles/_shared/tasks/check_network_drift.yml"
+  vars:
+    network_name: "{{ portfolio_network_name }}"
+    network_internal: true
+
+- name: "Portfolio — Deployer le docker-compose"
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ portfolio_data_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Redemarrer portfolio
+
+- name: "Portfolio — Lancer le container"
+  community.docker.docker_compose_v2:
+    project_src: "{{ portfolio_data_dir }}"
+    state: present

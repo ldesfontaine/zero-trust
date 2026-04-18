@@ -1,0 +1,32 @@
+# Firewall nftables : policy drop in + out, allowlists
+# validate empeche de charger un fichier casse
+# Chargement async pour ne pas tuer la connexion Ansible
+
+- name: "Firewall — Deployer la configuration nftables"
+  ansible.builtin.template:
+    src: nftables.conf.j2
+    dest: /etc/nftables.conf
+    owner: root
+    group: root
+    mode: "0600"
+    validate: "/usr/sbin/nft -c -f %s"
+  register: nftables_config
+
+- name: "Firewall — Charger les regles nftables (async)"
+  ansible.builtin.command: # noqa: no-handler
+    cmd: nft -f /etc/nftables.conf
+  async: 10
+  poll: 0
+  when: nftables_config is changed
+
+- name: "Firewall — Attendre que la connexion SSH se retablisse"
+  ansible.builtin.wait_for_connection: # noqa: no-handler
+    delay: 3
+    timeout: 30
+  when: nftables_config is changed
+
+# systemd sert uniquement a activer le service au boot
+- name: "Firewall — Activer nftables au demarrage"
+  ansible.builtin.systemd:
+    name: nftables
+    enabled: true

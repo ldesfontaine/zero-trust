@@ -1,0 +1,35 @@
+# Variables communes a toutes les machines
+
+# --- Domaine ---
+# Source de verite unique. Tous les sous-domaines derivent de base_domain.
+base_domain: "ldesfontaine.com"
+
+# --- Cle SSH privee deploy (cote controleur Ansible) ---
+base_deploy_ssh_private_key: "~/.ssh/id_ed25519_deploy"
+
+# --- Cles SSH (publiques, communes a toutes les machines) ---
+base_admin_ssh_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO2inxgzLQNpPmDBIFK8UyoY6Leamej8Eict7AcbYR1M vps-soc-2026"
+base_deploy_ssh_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPuOM4buD0V2CbavyXNsXxUQ2u28GcO5x3f0Dpt/C7Ke deploy@homelab"
+
+# --- NetBird ---
+# Desactive pour l'instant. A reactiver quand le mesh sera necessaire.
+netbird_domain: "mesh.{{ base_domain }}"
+
+# --- Paquets de base ---
+# Surcharge de base_packages si necessaire (defaut dans roles/base/defaults)
+
+# --- Services exclus du routing Traefik ---
+# Variable globale (utilisee par le role traefik ET par site.yml play 3).
+# Ces services n'ont pas de reseau auquel Traefik doit se connecter.
+traefik_excluded_services:
+  - traefik
+  - bientot_agent
+  - crowdsec
+
+# --- TLS wildcard ---
+# Variable calculee, source de verite unique utilisee par :
+# - roles/traefik (config dynamique + compose + tasks)
+# - tous les roles de services (labels conditionnels)
+# Un token Cloudflare valide fait 40+ chars. On filtre les placeholders
+# genre "TO_FILL" ou vide.
+traefik_wildcard_enabled: "{{ (vault_cloudflare_dns_api_token | default('') | length > 10) }}"

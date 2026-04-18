@@ -1,0 +1,51 @@
+# Creation des utilisateurs admin et deploy
+
+- name: "Utilisateurs — Creer le user admin avec sudo"
+  ansible.builtin.user:
+    name: "{{ base_admin_user }}"
+    groups: sudo
+    append: true
+    shell: /bin/bash
+    create_home: true
+    state: present
+
+- name: "Utilisateurs — Autoriser la cle SSH du user admin"
+  ansible.posix.authorized_key:
+    user: "{{ base_admin_user }}"
+    key: "{{ base_admin_ssh_pubkey }}"
+    exclusive: true
+    state: present
+
+- name: "Utilisateurs — Configurer sudo NOPASSWD pour admin"
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers.d/{{ base_admin_user }}
+    line: "{{ base_admin_user }} ALL=(ALL) NOPASSWD: ALL"
+    create: true
+    mode: "0440"
+    validate: "visudo -cf %s"
+
+- name: "Utilisateurs — Creer le user deploy"
+  ansible.builtin.user:
+    name: "{{ base_deploy_user }}"
+    shell: /bin/bash
+    create_home: true
+    system: false
+    state: present
+
+- name: "Utilisateurs — Autoriser la cle SSH du user deploy"
+  ansible.posix.authorized_key:
+    user: "{{ base_deploy_user }}"
+    key: "{{ base_deploy_ssh_pubkey }}"
+    exclusive: true
+    state: present
+
+# Ansible a besoin de become sur trop de commandes pour une allowlist sudoers
+# Risque accepte documente dans docs/04-SECURITY.md
+- name: "Utilisateurs — Configurer sudo NOPASSWD pour deploy"
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/deploy
+    content: "{{ base_deploy_user }} ALL=(root) NOPASSWD: ALL\n"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "visudo -cf %s"

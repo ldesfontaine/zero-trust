@@ -1,0 +1,32 @@
+# {{ ansible_managed }}
+# Socket proxy — acces securise a l'API Docker
+# Les services (Traefik, etc.) se connectent ici au lieu du socket direct.
+
+services:
+  socket-proxy:
+    image: {{ docker_socket_proxy_image }}:{{ docker_socket_proxy_version }}
+    container_name: socket-proxy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+    environment:
+      CONTAINERS: "{{ docker_socket_proxy_permissions.containers }}"
+      IMAGES: "{{ docker_socket_proxy_permissions.images }}"
+      NETWORKS: "{{ docker_socket_proxy_permissions.networks }}"
+      INFO: "{{ docker_socket_proxy_permissions.info }}"
+      EVENTS: "{{ docker_socket_proxy_permissions.events }}"
+      EXEC: "{{ docker_socket_proxy_permissions.exec }}"
+      POST: "{{ docker_socket_proxy_permissions.post }}"
+      VOLUMES: "{{ docker_socket_proxy_permissions.volumes }}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - socket-proxy-net
+
+networks:
+  socket-proxy-net:
+    external: true

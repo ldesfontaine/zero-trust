@@ -1,0 +1,29 @@
+# ============================================================
+# Base — socle OS commun a toutes les machines
+#
+# Ce role prepare un noeud vierge :
+#   1. Paquets systeme essentiels
+#   2. Utilisateurs admin (sudo NOPASSWD) et deploy (bash)
+#   3. Hardening SSH (port custom, cle only, root off)
+#      → async restart + wait_for + switch port/user/key
+#   4. Firewall nftables (policy drop in + out, allowlists)
+#
+# L'auto-resolution du port SSH est dans les playbooks (pre_tasks),
+# AVANT le gather_facts. Ne fait PAS : Docker, NetBird, services.
+# ============================================================
+
+- name: "Base — Installer les paquets systeme"
+  ansible.builtin.include_tasks: packages.yml
+  tags: [base, base-packages]
+
+- name: "Base — Configurer les utilisateurs"
+  ansible.builtin.include_tasks: users.yml
+  tags: [base, base-users]
+
+- name: "Base — Durcir SSH"
+  ansible.builtin.include_tasks: ssh.yml
+  tags: [base, base-ssh]
+
+- name: "Base — Configurer le firewall nftables"
+  ansible.builtin.include_tasks: nftables.yml
+  tags: [base, base-nftables]

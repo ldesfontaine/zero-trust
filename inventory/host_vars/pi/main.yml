@@ -1,0 +1,23 @@
+# Variables specifiques au Pi (non chiffre)
+# Placeholder — a completer au Sprint 5 (Traefik Internal)
+
+# --- SSH ---
+base_ssh_port: 2222
+
+# --- Firewall (nftables) ---
+# Pas de ports input ouverts (mesh only, pas d'IP publique)
+base_nftables_input_tcp_allow: []
+base_nftables_input_udp_allow: []
+base_nftables_output_allow:
+  - { dest: "9.9.9.9", port: 53, proto: "udp", comment: "DNS Quad9" }
+  - { dest: "1.1.1.1", port: 53, proto: "udp", comment: "DNS Cloudflare" }
+  - { dest: "9.9.9.9", port: 853, proto: "tcp", comment: "DNS-over-TLS Quad9" }
+  - { dest: "0.0.0.0/0", port: 443, proto: "tcp", comment: "HTTPS (GHCR, API DNS provider)" }
+
+# --- Traefik (mode internal) — a activer Sprint 5 ---
+# Mode TLS auto-detecte par le role : token Cloudflare present → DNS-01 + wildcard
+# traefik_mode: "internal"
+# traefik_listen_address: "{{ netbird_client_ip }}"
+# traefik_tls_email: "TO_FILL"
+# traefik_enable_waf: false
+# traefik_enable_crowdsec: false

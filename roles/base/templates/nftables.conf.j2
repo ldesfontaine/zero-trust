@@ -1,0 +1,80 @@
+#!/usr/sbin/nft -f
+# {{ ansible_managed }}
+# Firewall nftables — genere par Ansible
+# Policy DROP en input ET output
+# Ne PAS modifier manuellement sur le serveur
+
+# Supprime UNIQUEMENT notre table — ne touche pas aux tables Docker (nat, etc.)
+table inet filter
+delete table inet filter
+
+table inet filter {
+
+  chain input {
+    type filter hook input priority 0; policy drop;
+
+    # Loopback — necessaire pour les services locaux
+    iif "lo" accept
+
+    # Connexions etablies / associees
+    ct state established,related accept
+
+    # ICMP — ping et diagnostics reseau
+    ip protocol icmp accept
+    ip6 nexthdr icmpv6 accept
+
+{% if base_nftables_enable_mesh | default(false) %}
+    # Trafic mesh NetBird — tout le trafic entrant sur wt0 est autorise
+    iifname "wt0" accept
+{% endif %}
+
+    # SSH sur port durci
+    tcp dport {{ base_ssh_port }} accept
+
+{% for port in base_nftables_input_tcp_allow %}
+    # Port TCP supplementaire (surcharge host_vars)
+    tcp dport {{ port }} accept
+{% endfor %}
+
+{% for port in base_nftables_input_udp_allow %}
+    # Port UDP supplementaire (surcharge host_vars)
+    udp dport {{ port }} accept
+{% endfor %}
+
+    # Tout le reste est DROP (policy)
+  }
+
+  chain forward {
+    type filter hook forward priority 0; policy accept;
+
+    # Docker gere l'isolation via ses propres regles iptables + internal:true
+    # nftables ne doit PAS interferer avec le forward Docker
+  }
+
+  chain output {
+    type filter hook output priority 0; policy drop;
+
+    # Loopback
+    oif "lo" accept
+
+    # Connexions etablies / associees
+    ct state established,related accept
+
+    # ICMP
+    ip protocol icmp accept
+    ip6 nexthdr icmpv6 accept
+
+{% if base_nftables_enable_mesh | default(false) %}
+    # Trafic mesh NetBird — tout le trafic sortant sur wt0 est autorise
+    oifname "wt0" accept
+{% endif %}
+
+{% for rule in base_nftables_output_allow %}
+    # Output autorise : {{ rule.dest }}:{{ rule.port }}/{{ rule.proto }}
+    {{ rule.proto }} dport {{ rule.port }} ip daddr {{ rule.dest }} accept
+{% endfor %}
+
+    # Tout le reste est DROP (policy)
+  }
+
+}

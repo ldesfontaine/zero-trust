@@ -1,0 +1,38 @@
+# Valeurs par defaut du role base
+# Peuvent etre surchargees dans host_vars/<machine>.yml
+
+# --- SSH ---
+base_ssh_port: 2222
+
+# --- Utilisateurs ---
+base_admin_user: "lucas"
+base_deploy_user: "deploy"
+
+# --- Paquets systeme ---
+base_packages:
+  - curl
+  - wget
+  - jq
+  - unattended-upgrades
+  - nftables
+
+# --- Firewall (nftables) ---
+# Regles output supplementaires, surchargees dans host_vars par machine
+# Format : liste de dict { dest: "IP ou CIDR", port: PORT, proto: "tcp|udp" }
+#
+# Exemple dans host_vars/vps.yml :
+#   base_nftables_output_allow:
+#     - { dest: "9.9.9.9", port: 53, proto: "udp" }
+#     - { dest: "0.0.0.0/0", port: 443, proto: "tcp" }
+base_nftables_output_allow: []
+
+# Ports TCP ouverts en input (en plus de SSH qui est toujours ouvert)
+# Surchargeable dans host_vars pour le VPS (80, 443, 3478)
+base_nftables_input_tcp_allow: []
+
+# Ports UDP ouverts en input
+base_nftables_input_udp_allow: []
+
+# Mesh NetBird — autorise le trafic sur wt0 dans nftables
+# Activer quand NetBird est deploye sur la machine
+base_nftables_enable_mesh: false

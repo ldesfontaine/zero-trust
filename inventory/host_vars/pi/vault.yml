@@ -1,0 +1,5 @@
+# Secrets Pi — a chiffrer avec ansible-vault encrypt
+# ansible-vault encrypt host_vars/pi_vault.yml
+#
+# Placeholder — a completer quand les services Pi seront deployes
+# (Traefik Internal : token API DNS, Seafile : passwords DB, etc.)

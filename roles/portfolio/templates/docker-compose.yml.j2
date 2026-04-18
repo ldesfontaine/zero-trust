@@ -1,0 +1,42 @@
+# {{ ansible_managed }}
+# Portfolio — site personnel statique
+# Reseau isole, Traefik se connecte via le role Traefik.
+
+services:
+  portfolio:
+    image: {{ portfolio_image }}:{{ portfolio_version }}
+    container_name: portfolio
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      - HOSTNAME=0.0.0.0
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://0.0.0.0:{{ portfolio_port }}/"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    tmpfs:
+      - /tmp
+{# Mode TLS wildcard : cert DEFAULT du TLS store, pas de certresolver par router #}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portfolio.rule=Host(`{{ portfolio_domain }}`)"
+      - "traefik.http.routers.portfolio.entrypoints=websecure"
+      - "traefik.http.routers.portfolio.tls=true"
+{% if not traefik_wildcard_enabled %}
+      - "traefik.http.routers.portfolio.tls.certresolver=letsencrypt"
+{% endif %}
+      - "traefik.http.services.portfolio.loadbalancer.server.port={{ portfolio_port }}"
+      - "traefik.docker.network={{ portfolio_network_name }}"
+    networks:
+      - {{ portfolio_network_name }}
+
+networks:
+  {{ portfolio_network_name }}:
+    name: {{ portfolio_network_name }}
+    internal: true

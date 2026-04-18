@@ -1,0 +1,34 @@
+# Installation du client NetBird depuis le repo officiel
+# Methode signed-by keyring (compatible Debian 13+)
+
+- name: "NetBird Client — Creer le dossier keyrings"
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: "NetBird Client — Telecharger la cle GPG du repo"
+  ansible.builtin.get_url:
+    url: https://pkgs.netbird.io/debian/public.key
+    dest: /etc/apt/keyrings/netbird.asc
+    mode: "0644"
+
+- name: "NetBird Client — Ajouter le repo APT"
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by=/etc/apt/keyrings/netbird.asc]
+      https://pkgs.netbird.io/debian stable main
+    filename: netbird
+    state: present
+
+- name: "NetBird Client — Installer le paquet netbird"
+  ansible.builtin.apt:
+    name: netbird
+    state: present
+    update_cache: true
+
+- name: "NetBird Client — Activer et demarrer le service"
+  ansible.builtin.systemd:
+    name: netbird
+    enabled: true
+    state: started

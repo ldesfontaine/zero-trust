@@ -1,0 +1,163 @@
+# Creation des 6 policies ACLs NetBird via API REST
+# Matrice definie dans docs/03-FLUX.md
+# Supprime la policy Default de NetBird si presente.
+
+- name: "NetBird Config — Lister les policies existantes"
+  ansible.builtin.uri:
+    url: "{{ netbird_config_api_url }}/policies"
+    method: GET
+    headers:
+      Authorization: "Token {{ vault_netbird_api_token }}"
+      Accept: "application/json"
+    status_code: 200
+  register: netbird_config_existing_policies
+
+- name: "NetBird Config — Extraire les noms des policies existantes"
+  ansible.builtin.set_fact:
+    netbird_config_existing_policy_names: >-
+      {{ netbird_config_existing_policies.json | map(attribute='name') | list }}
+
+# --- Supprimer la policy Default ---
+
+- name: "NetBird Config — Trouver la policy Default"
+  ansible.builtin.set_fact:
+    netbird_config_default_policy_id: >-
+      {{ (netbird_config_existing_policies.json
+          | selectattr('name', 'equalto', 'Default')
+          | map(attribute='id') | list | first | default('')) }}
+
+- name: "NetBird Config — Supprimer la policy Default"
+  ansible.builtin.uri:
+    url: "{{ netbird_config_api_url }}/policies/{{ netbird_config_default_policy_id }}"
+    method: DELETE
+    headers:
+      Authorization: "Token {{ vault_netbird_api_token }}"
+    status_code: [200, 204]
+  when: netbird_config_default_policy_id | length > 0
+
+# --- Definir les 6 policies ---
+# NetBird est deny-by-default : pas besoin de drop explicite dmz → dmz.
+
+- name: "NetBird Config — Definir la liste des policies"
+  ansible.builtin.set_fact:
+    netbird_config_policies:
+      # Policy 1 : admin → dmz, ALL (unidirectionnel — serveur ne peut pas initier)
+      - name: "admin-to-dmz"
+        description: "Admin acces complet aux machines DMZ"
+        enabled: true
+        rule:
+          protocol: "all"
+          action: "accept"
+          bidirectional: false
+          sources:
+            - "{{ netbird_config_group_ids['admin'] }}"
+          destinations:
+            - "{{ netbird_config_group_ids['dmz'] }}"
+
+      # Policy 2 : admin → private, ALL (unidirectionnel — serveur ne peut pas initier)
+      - name: "admin-to-private"
+        description: "Admin acces complet aux machines privees"
+        enabled: true
+        rule:
+          protocol: "all"
+          action: "accept"
+          bidirectional: false
+          sources:
+            - "{{ netbird_config_group_ids['admin'] }}"
+          destinations:
+            - "{{ netbird_config_group_ids['private'] }}"
+
+      # Policy 3 : dmz → private, UDP :53 (AdGuard DNS)
+      - name: "dmz-to-private-dns"
+        description: "DMZ acces DNS AdGuard uniquement"
+        enabled: true
+        rule:
+          protocol: "udp"
+          action: "accept"
+          bidirectional: false
+          ports:
+            - "53"
+          sources:
+            - "{{ netbird_config_group_ids['dmz'] }}"
+          destinations:
+            - "{{ netbird_config_group_ids['private'] }}"
+
+      # Policy 4 : agents → private, TCP :3002 (Bientot Agent → Master)
+      - name: "agents-to-private-monitoring"
+        description: "Agents monitoring vers Bientot Master"
+        enabled: true
+        rule:
+          protocol: "tcp"
+          action: "accept"
+          bidirectional: false
+          ports:
+            - "3002"
+          sources:
+            - "{{ netbird_config_group_ids['agents'] }}"
+          destinations:
+            - "{{ netbird_config_group_ids['private'] }}"
+
+      # Policy 5 : private → dmz, TCP :443 + :ssh_port (alertes + backup)
+      - name: "private-to-dmz-alerts-backup"
+        description: "Private vers DMZ pour Ntfy et backup rsync"
+        enabled: true
+        rule:
+          protocol: "tcp"
+          action: "accept"
+          bidirectional: false
+          ports:
+            - "443"
+            - "{{ netbird_config_ssh_port | string }}"
+          sources:
+            - "{{ netbird_config_group_ids['private'] }}"
+          destinations:
+            - "{{ netbird_config_group_ids['dmz'] }}"
+
+      # dmz → dmz : pas de policy = deny-by-default (NetBird bloque implicitement)
+
+      # Policy 6 : private → private, TCP :3002 (Bientot Agent → Master)
+      - name: "private-to-private-monitoring"
+        description: "Agent Pi vers Master Pi en localhost mesh"
+        enabled: true
+        rule:
+          protocol: "tcp"
+          action: "accept"
+          bidirectional: false
+          ports:
+            - "3002"
+          sources:
+            - "{{ netbird_config_group_ids['private'] }}"
+          destinations:
+            - "{{ netbird_config_group_ids['private'] }}"
+
+# --- Creer les policies manquantes ---
+
+- name: "NetBird Config — Creer les policies manquantes"
+  ansible.builtin.uri:
+    url: "{{ netbird_config_api_url }}/policies"
+    method: POST
+    headers:
+      Authorization: "Token {{ vault_netbird_api_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body: >-
+      {{ {
+        'name': netbird_config_policy_item.name,
+        'description': netbird_config_policy_item.description,
+        'enabled': netbird_config_policy_item.enabled,
+        'rules': [{
+          'name': netbird_config_policy_item.name,
+          'enabled': true,
+          'action': netbird_config_policy_item.rule.action,
+          'bidirectional': netbird_config_policy_item.rule.bidirectional,
+          'protocol': netbird_config_policy_item.rule.protocol,
+          'ports': netbird_config_policy_item.rule.ports | default(omit),
+          'sources': netbird_config_policy_item.rule.sources,
+          'destinations': netbird_config_policy_item.rule.destinations
+        }]
+      } }}
+    status_code: 200
+  loop: "{{ netbird_config_policies }}"
+  loop_control:
+    loop_var: netbird_config_policy_item
+  when: netbird_config_policy_item.name not in netbird_config_existing_policy_names

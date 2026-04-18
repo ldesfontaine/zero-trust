@@ -1,0 +1,32 @@
+# ============================================================
+# NetBird Config — groupes et ACLs via API REST
+#
+# S'execute UNE SEULE FOIS apres le premier demarrage du serveur.
+# Utilise le token API recupere manuellement (seule action manuelle
+# de tout le bootstrap, voir docs/08-BOOTSTRAP.md).
+#
+# Cree :
+#   - 4 groupes de peers (admin, dmz, private, agents)
+#   - 6 policies ACLs (matrice de docs/03-FLUX.md)
+#   - Supprime la policy Default de NetBird
+#
+# Idempotent : verifie l'existence avant de creer.
+# ============================================================
+
+- name: "NetBird Config — Skip si token API absent"
+  ansible.builtin.debug:
+    msg: >-
+      Token API non configure (vault_netbird_api_token vide ou absent).
+      Skip netbird_config. Remplir le token apres l'etape manuelle
+      (voir docs/08-BOOTSTRAP.md etape 1.4) puis relancer.
+  when: (vault_netbird_api_token | default('')) | length == 0 or vault_netbird_api_token == 'TO_FILL'
+
+- name: "NetBird Config — Creer les groupes"
+  ansible.builtin.include_tasks: groups.yml
+  when: (vault_netbird_api_token | default('')) | length > 0 and vault_netbird_api_token != 'TO_FILL'
+  tags: [netbird, netbird-config, netbird-groups]
+
+- name: "NetBird Config — Configurer les policies ACLs"
+  ansible.builtin.include_tasks: policies.yml
+  when: (vault_netbird_api_token | default('')) | length > 0 and vault_netbird_api_token != 'TO_FILL'
+  tags: [netbird, netbird-config, netbird-policies]

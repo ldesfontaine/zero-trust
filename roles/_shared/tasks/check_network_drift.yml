@@ -1,0 +1,28 @@
+# Detecter si un reseau Docker existe deja avec des parametres differents
+# de ceux attendus. Fail explicitement si drift -> l'humain decide.
+#
+# Variables attendues (passees via include_tasks vars) :
+#   network_name       : nom du reseau (ex: portfolio-net)
+#   network_internal   : true/false attendu
+
+- name: "Verifier si le reseau {{ network_name }} existe"
+  ansible.builtin.command:
+    cmd: "docker network inspect {{ network_name }} --format '{% raw %}{{ .Internal }}{% endraw %}'"
+  register: network_inspect
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: "Detecter un drift sur le reseau {{ network_name }}"
+  ansible.builtin.fail:
+    msg: >-
+      Le reseau Docker "{{ network_name }}" existe avec internal={{ network_inspect.stdout }}
+      mais le template attend internal={{ network_internal }}.
+      Docker Compose NE RECREERA PAS le reseau automatiquement.
+      Action manuelle requise :
+        1. docker compose -f /opt/modules/<service>/docker-compose.yml down
+        2. docker network rm {{ network_name }}
+        3. Relancer le playbook
+  when:
+    - network_inspect.rc == 0
+    - network_inspect.stdout | trim | lower != (network_internal | string | lower)

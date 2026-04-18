@@ -1,0 +1,46 @@
+# {{ ansible_managed }}
+# Ntfy — serveur de notifications push
+# Reseau isole, Traefik se connecte via le role Traefik.
+
+services:
+  ntfy:
+    image: {{ ntfy_image }}:v{{ ntfy_version }}
+    container_name: ntfy
+    restart: unless-stopped
+    command: serve
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    user: "{{ ntfy_container_uid }}:{{ ntfy_container_gid }}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:{{ ntfy_port }}/v1/health | grep -q '\"healthy\":true'"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    tmpfs:
+      - /tmp
+    volumes:
+      - "{{ ntfy_data_dir }}/cache:/var/cache/ntfy"
+      - "{{ ntfy_data_dir }}/etc:/etc/ntfy:ro"
+{# Mode TLS wildcard : cert DEFAULT du TLS store, pas de certresolver par router #}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ntfy.rule=Host(`{{ ntfy_domain }}`)"
+      - "traefik.http.routers.ntfy.entrypoints=websecure"
+      - "traefik.http.routers.ntfy.tls=true"
+{% if not traefik_wildcard_enabled %}
+      - "traefik.http.routers.ntfy.tls.certresolver=letsencrypt"
+{% endif %}
+      - "traefik.http.services.ntfy.loadbalancer.server.port={{ ntfy_port }}"
+      - "traefik.docker.network={{ ntfy_network_name }}"
+    networks:
+      - {{ ntfy_network_name }}
+
+networks:
+  {{ ntfy_network_name }}:
+    name: {{ ntfy_network_name }}
+    # Sortie internet requise : ntfy doit contacter ntfy.sh pour relayer les push APNs iOS
+    internal: false

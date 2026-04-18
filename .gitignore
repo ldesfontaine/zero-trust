@@ -1,0 +1,9 @@
+.claude/
+CLAUDE.md
+
+# Backups : ne JAMAIS commit de cles/certs/dumps en clair.
+# Seuls les fichiers chiffres ansible-vault (.vault) sont traques.
+backups/**/*.json
+backups/**/*.pem
+backups/**/*.key
+!backups/**/*.vault

@@ -1,0 +1,23 @@
+# ============================================================
+# Docker — moteur de containers + socket proxy
+#
+# Ce role installe et configure :
+#   1. Docker CE (repo officiel, multi-arch amd64/arm64)
+#   2. daemon.json (log rotation, pas de iptables override)
+#   3. Socket proxy (acces Docker API sans exposer le socket)
+#   4. Reseau socket-proxy-net (internal: true)
+#
+# Ne fait PAS : deployer des services applicatifs.
+# ============================================================
+
+- name: "Docker — Installer le moteur Docker CE"
+  ansible.builtin.include_tasks: engine.yml
+  tags: [docker, docker-engine]
+
+- name: "Docker — Configurer le daemon"
+  ansible.builtin.include_tasks: daemon.yml
+  tags: [docker, docker-daemon]
+
+- name: "Docker — Deployer le socket proxy"
+  ansible.builtin.include_tasks: socket_proxy.yml
+  tags: [docker, docker-socket-proxy]

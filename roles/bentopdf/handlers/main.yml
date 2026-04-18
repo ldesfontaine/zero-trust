@@ -1,0 +1,7 @@
+- name: "Redemarrer bentopdf"
+  community.docker.docker_compose_v2:
+    project_src: "{{ bentopdf_data_dir }}"
+    state: present
+    # recreate: always force la recreation du container meme si
+    # Docker pense qu'il n'y a rien a faire. Utile quand on change une variable d'environnement ou un label
+    recreate: always

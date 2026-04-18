@@ -1,0 +1,32 @@
+# Valeurs par defaut du role docker
+# Peuvent etre surchargees dans host_vars/<machine>.yml
+
+# --- Docker Engine ---
+docker_edition: "ce"
+docker_packages:
+  - "docker-{{ docker_edition }}"
+  - "docker-{{ docker_edition }}-cli"
+  - "containerd.io"
+  - "docker-compose-plugin"
+
+# --- Daemon (log rotation) ---
+docker_daemon_log_driver: "json-file"
+docker_daemon_log_max_size: "10m"
+docker_daemon_log_max_file: "3"
+
+# --- Socket Proxy ---
+docker_socket_proxy_image: "tecnativa/docker-socket-proxy"
+docker_socket_proxy_version: "0.1.2"  # source de verite : inventory/group_vars/all/versions.yml
+docker_socket_proxy_dir: "/opt/modules/socket-proxy"
+
+# Permissions granulaires du socket proxy
+# 1 = autorise, 0 = bloque
+docker_socket_proxy_permissions:
+  containers: 1
+  images: 1
+  networks: 1
+  info: 1
+  events: 1
+  exec: 0
+  post: 0
+  volumes: 0

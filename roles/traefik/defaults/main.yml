@@ -1,0 +1,40 @@
+# Valeurs par defaut du role traefik
+# Un seul role, deux comportements : edge (VPS) ou internal (Pi).
+# Surcharger dans host_vars/<machine>.yml.
+
+# --- Mode ---
+# "edge"     → VPS, ecoute 0.0.0.0, challenge HTTP, WAF + CrowdSec
+# "internal" → Pi, ecoute IP mesh, challenge DNS, pas de WAF
+traefik_mode: "edge"
+
+# --- Image ---
+traefik_version: "3.6"  # source de verite : inventory/group_vars/all/versions.yml
+
+# --- Reseau ---
+traefik_listen_address: "0.0.0.0"
+
+# --- TLS ---
+# Le mode (http-01 / dns-01) est detecte automatiquement par tasks/main.yml :
+#   vault_cloudflare_dns_api_token rempli (>10 chars) → DNS-01 + wildcard
+#   sinon                                             → HTTP-01 (fallback)
+# Aucune variable a switcher manuellement.
+traefik_tls_email: ""
+# Token API Cloudflare — a remplir dans host_vars/<machine>/vault.yml pour DNS-01
+vault_cloudflare_dns_api_token: ""
+
+# --- Securite ---
+traefik_enable_waf: true
+traefik_enable_crowdsec: true
+
+# --- Repertoires ---
+traefik_data_dir: "/opt/modules/traefik"
+
+# --- Services exclus du routing Traefik ---
+# Definie globalement dans inventory/group_vars/all/main.yml
+# (utilisee par ce role ET par site.yml play 3, donc doit rester accessible
+# en dehors du contexte de chargement du role)
+
+# --- Reseaux supplementaires ---
+# Services deployes hors machine_services (ex: netbird via machine_mesh)
+# mais qui ont des labels Traefik et un reseau auquel se connecter.
+traefik_extra_networks: []

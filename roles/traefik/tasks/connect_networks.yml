@@ -1,0 +1,39 @@
+# ============================================================
+# Traefik — Connexion aux reseaux des services
+#
+# Appele depuis playbooks/site.yml APRES le deploy des services.
+# Le compose de Traefik ne contient que socket-proxy-net +
+# traefik-public (edge). Traefik rejoint chaque reseau
+# <service>-net individuellement via docker network connect.
+#
+# Variables requises :
+#   machine_services          : liste des services de la machine
+#   traefik_excluded_services : liste des services hors routing
+#   traefik_extra_networks    : reseaux hors machine_services
+#   traefik_mode              : edge | internal (pour nom container)
+# ============================================================
+
+- name: "Traefik — Construire la liste des reseaux a rejoindre"
+  ansible.builtin.set_fact:
+    traefik_networks_to_join: >-
+      {{ (machine_services | default([]) | difference(traefik_excluded_services)
+          | map('regex_replace', '_', '-') | map('regex_replace', '$', '-net') | list)
+         + (traefik_extra_networks | default([])) }}
+
+- name: "Traefik — Se connecter au reseau de chaque service"
+  ansible.builtin.command:
+    cmd: >-
+      docker network connect
+      {{ traefik_network_item }}
+      traefik-{{ traefik_mode }}
+  loop: "{{ traefik_networks_to_join }}"
+  loop_control:
+    loop_var: traefik_network_item
+  register: traefik_connect_result
+  changed_when: traefik_connect_result.rc == 0
+  failed_when:
+    - traefik_connect_result.rc != 0
+    - "'already exists' not in traefik_connect_result.stderr"
+    - "'not found' not in traefik_connect_result.stderr"
+  # already exists = deja connecte → OK (idempotent)
+  # not found = service pas encore deploye → skip

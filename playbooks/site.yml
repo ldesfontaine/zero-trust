@@ -1,0 +1,100 @@
+# ============================================================
+# Deploiement complet d'un noeud : infra + services.
+# Utilise pour le premier deploiement ou une reconstruction totale.
+#
+# Play 1 : socle (base + docker) avec auto-detection du port SSH
+# Play 2 : Traefik d'abord (reverse proxy), puis NetBird (mesh)
+#           Traefik est deploye en premier car NetBird a besoin
+#           du domaine mesh.* routable pour l'API (config + enrollment).
+# Play 3 : services applicatifs — boucle sur machine_services
+#           (traefik exclu car deja deploye au Play 2)
+#           Reconnexion Traefik aux nouveaux reseaux a la fin.
+# ============================================================
+
+- name: "Infrastructure — socle commun a toutes les machines"
+  hosts: all
+  become: true
+  gather_facts: false
+  tags: [infra]
+
+  pre_tasks:
+    - name: "Tester la connexion sur le port actuel"
+      ansible.builtin.wait_for_connection:
+        timeout: 5
+      ignore_errors: true
+      register: ssh_test
+
+    - name: "Basculer sur le port durci si necessaire"
+      ansible.builtin.set_fact:
+        ansible_port: "{{ base_ssh_port }}"
+      when: ssh_test is failed
+
+    - name: "Collecter les facts manuellement"
+      ansible.builtin.setup:
+
+  roles:
+    - role: base
+      tags: [base]
+
+    - role: docker
+      tags: [docker]
+
+- name: "Infrastructure — Traefik + NetBird (mesh)"
+  hosts: all
+  become: true
+  tags: [infra]
+
+  tasks:
+    # Traefik en premier : NetBird a besoin du domaine routable
+    # pour l'API (netbird_config + netbird_client enrollment).
+    - name: "Deployer Traefik"
+      ansible.builtin.include_role:
+        name: traefik
+      when: "'traefik' in machine_services"
+      tags: [traefik]
+
+    - name: "NetBird — Deployer le serveur (VPS uniquement)"
+      ansible.builtin.include_role:
+        name: netbird
+        tasks_from: server.yml
+      when: machine_mesh.server | default(false)
+      tags: [netbird, netbird-server]
+
+    - name: "NetBird — Configurer les groupes et ACLs"
+      ansible.builtin.include_role:
+        name: netbird
+        tasks_from: config.yml
+      when: machine_mesh.server | default(false)
+      tags: [netbird, netbird-config]
+
+    - name: "NetBird — Enroller le noeud"
+      ansible.builtin.include_role:
+        name: netbird
+        tasks_from: client/main.yml
+      when: machine_mesh.client | default(false)
+      tags: [netbird, netbird-client]
+
+- name: "Services — deploiement modulaire"
+  hosts: all
+  become: true
+  tags: [services]
+
+  tasks:
+    # Traefik est deja deploye au Play 2, on le skip ici.
+    # Chaque service cree son propre reseau (<service>-net).
+    # socket-proxy-net est cree par le role docker (socket_proxy.yml).
+    - name: "Deployer chaque service assigne a cette machine"
+      ansible.builtin.include_role:
+        name: "{{ service_item }}"
+      loop: "{{ machine_services | difference(['traefik']) }}"
+      loop_control:
+        loop_var: service_item
+
+    # Connexion de Traefik aux reseaux de tous les services (machine_services
+    # + traefik_extra_networks). Tous les reseaux existent a ce stade.
+    - name: "Traefik — Connecter aux reseaux des services deployes"
+      ansible.builtin.include_role:
+        name: traefik
+        tasks_from: connect_networks.yml
+      when: "'traefik' in machine_services"
+      tags: [traefik]

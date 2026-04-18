@@ -1,0 +1,20 @@
+# ============================================================
+# NetBird Client — agent mesh WireGuard
+#
+# Ce role installe le client NetBird sur le host :
+#   1. Ajoute le repo APT NetBird
+#   2. Installe le paquet netbird
+#   3. Enroll le noeud avec la setup key
+#   4. Stocke l'IP mesh comme fact Ansible
+#
+# Le client cree l'interface wt0 (tunnel WireGuard).
+# Installe sur le HOST, pas dans Docker.
+# ============================================================
+
+- name: "NetBird Client — Installer le paquet"
+  ansible.builtin.include_tasks: client/install.yml
+  tags: [netbird, netbird-client, netbird-install]
+
+- name: "NetBird Client — Enroller le noeud"
+  ansible.builtin.include_tasks: client/enroll.yml
+  tags: [netbird, netbird-client, netbird-enroll]

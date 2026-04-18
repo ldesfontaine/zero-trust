@@ -1,0 +1,50 @@
+# Installation de Docker CE depuis le repo officiel
+# Supporte amd64 (VPS) et arm64 (Raspberry Pi)
+# Methode signed-by keyring (compatible Debian 13+)
+
+- name: "Docker — Installer les dependances APT"
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+    update_cache: true
+
+- name: "Docker — Detecter l'architecture"
+  ansible.builtin.set_fact:
+    docker_arch: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+
+- name: "Docker — Creer le dossier keyrings"
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: "Docker — Telecharger la cle GPG Docker"
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/debian/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+- name: "Docker — Ajouter le depot APT officiel"
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch={{ docker_arch }} signed-by=/etc/apt/keyrings/docker.asc]
+      https://download.docker.com/linux/debian
+      {{ ansible_distribution_release }} stable
+    filename: docker
+    state: present
+
+- name: "Docker — Installer les paquets Docker CE"
+  ansible.builtin.apt:
+    name: "{{ docker_packages }}"
+    state: present
+    update_cache: true
+
+- name: "Docker — Activer et demarrer le service"
+  ansible.builtin.systemd:
+    name: docker
+    enabled: true
+    state: started

@@ -1,0 +1,113 @@
+# ============================================================
+# Ntfy — serveur de notifications push
+#
+# Container read-only, reseau non isole (internal: false) :
+# ntfy doit sortir sur internet pour relayer les push APNs via ntfy.sh.
+# Route par Traefik Edge via labels Docker.
+# Auth deny-all par defaut, user admin + token crees automatiquement.
+# ============================================================
+
+# Parent en root:root 0755 : un attaquant qui compromet le container
+# ne peut ecrire QUE dans cache/ et etc/, pas ailleurs
+- name: "Ntfy — Creer le repertoire parent du module"
+  ansible.builtin.file:
+    path: "{{ ntfy_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "Ntfy — Creer les sous-dossiers de donnees"
+  ansible.builtin.file:
+    path: "{{ ntfy_data_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ ntfy_container_uid }}"
+    group: "{{ ntfy_container_gid }}"
+    mode: "0750"
+  loop:
+    - cache
+    - etc
+
+- name: "Ntfy — Deployer la configuration serveur"
+  ansible.builtin.template:
+    src: server.yml.j2
+    dest: "{{ ntfy_data_dir }}/etc/server.yml"
+    owner: "{{ ntfy_container_uid }}"
+    group: "{{ ntfy_container_gid }}"
+    mode: "0640"
+  notify: Redemarrer ntfy
+
+- name: "Ntfy — Verifier le drift reseau"
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../roles/_shared/tasks/check_network_drift.yml"
+  vars:
+    network_name: "{{ ntfy_network_name }}"
+    network_internal: false
+
+- name: "Ntfy — Deployer le docker-compose"
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ ntfy_data_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Redemarrer ntfy
+
+- name: "Ntfy — Lancer le container"
+  community.docker.docker_compose_v2:
+    project_src: "{{ ntfy_data_dir }}"
+    state: present
+
+# --- Provisioning user admin + token (idempotent) ---
+
+- name: "Ntfy — Verifier si le user admin existe"
+  ansible.builtin.command:
+    cmd: docker exec ntfy ntfy user list
+  register: ntfy_user_list
+  changed_when: false
+
+- name: "Ntfy — Creer le user admin"
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -e
+      - "NTFY_PASSWORD={{ vault_ntfy_admin_password }}"
+      - ntfy
+      - ntfy
+      - user
+      - add
+      - --role=admin
+      - admin
+  register: ntfy_user_add
+  changed_when: ntfy_user_add.rc == 0
+  failed_when:
+    - ntfy_user_add.rc != 0
+    - "'already exists' not in (ntfy_user_add.stderr | default(''))"
+  when: "'user admin' not in ntfy_user_list.stdout"
+  no_log: true
+
+- name: "Ntfy — Verifier si un token existe pour admin"
+  ansible.builtin.command:
+    cmd: docker exec ntfy ntfy token list admin
+  register: ntfy_token_list
+  changed_when: false
+  failed_when: false
+
+- name: "Ntfy — Verifier que le token est defini dans le vault"
+  ansible.builtin.fail:
+    msg: >-
+      vault_ntfy_auth_token doit etre defini dans le vault.
+      Generer avec : echo "tk_$(tr -dc 'a-z0-9' < /dev/urandom | head -c 26)"
+      Puis ansible-vault edit inventory/host_vars/vps/vault.yml
+  when: vault_ntfy_auth_token | length == 0
+
+- name: "Ntfy — Creer le token defini dans le vault (idempotent)"
+  ansible.builtin.command:
+    cmd: docker exec ntfy ntfy token add admin {{ vault_ntfy_auth_token }}
+  register: ntfy_token_add
+  changed_when: ntfy_token_add.rc == 0
+  failed_when:
+    - ntfy_token_add.rc != 0
+    - "'already exists' not in (ntfy_token_add.stderr | default(''))"
+  when: vault_ntfy_auth_token not in (ntfy_token_list.stdout | default(''))
+  no_log: true

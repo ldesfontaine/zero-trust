@@ -1,0 +1,61 @@
+# ============================================================
+# NetBird Server — orchestrateur mesh WireGuard (v0.65.0+)
+#
+# Architecture combinee : 2 containers
+#   1. netbird-server (management + signal + relay + STUN)
+#   2. dashboard (UI web)
+#
+# Derriere Traefik Edge :
+#   - TLS gere par Traefik (LETSENCRYPT_DOMAIN=none)
+#   - Routing via labels Docker (gRPC + HTTP)
+#   - Reseau netbird-server-net (internal: false, relay → internet)
+#
+# Seul port expose hors Docker : UDP 3478 (STUN, 0.0.0.0)
+# Ne peut PAS etre proxifie par Traefik.
+# ============================================================
+
+- name: "NetBird Server — Creer le repertoire du module"
+  ansible.builtin.file:
+    path: "{{ netbird_server_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "NetBird Server — Generer config.yaml"
+  ansible.builtin.template:
+    src: server/config.yaml.j2
+    dest: "{{ netbird_server_data_dir }}/config.yaml"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Redemarrer netbird server
+
+- name: "NetBird Server — Generer dashboard.env"
+  ansible.builtin.template:
+    src: server/dashboard.env.j2
+    dest: "{{ netbird_server_data_dir }}/dashboard.env"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Redemarrer netbird server
+
+- name: "NetBird Server — Verifier le drift reseau"
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../roles/_shared/tasks/check_network_drift.yml"
+  vars:
+    network_name: "{{ netbird_server_network_name }}"
+    network_internal: false
+
+- name: "NetBird Server — Deployer le docker-compose"
+  ansible.builtin.template:
+    src: server/docker-compose.yml.j2
+    dest: "{{ netbird_server_data_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Redemarrer netbird server
+
+- name: "NetBird Server — Lancer les containers"
+  community.docker.docker_compose_v2:
+    project_src: "{{ netbird_server_data_dir }}"
+    state: present

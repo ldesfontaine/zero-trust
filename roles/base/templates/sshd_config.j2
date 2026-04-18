@@ -1,0 +1,44 @@
+# {{ ansible_managed }}
+# Configuration SSH durcie — generee par Ansible
+# Ne PAS modifier manuellement sur le serveur
+
+Port {{ base_ssh_port }}
+AddressFamily any
+ListenAddress 0.0.0.0
+
+# --- Authentification ---
+PermitRootLogin no
+PubkeyAuthentication yes
+PasswordAuthentication no
+ChallengeResponseAuthentication no
+UsePAM yes
+AuthenticationMethods publickey
+MaxAuthTries 3
+LoginGraceTime 30
+
+# --- Restrictions ---
+AllowUsers {{ base_admin_user }} {{ base_deploy_user }}
+AllowAgentForwarding no
+AllowTcpForwarding no
+X11Forwarding no
+PermitTunnel no
+GatewayPorts no
+PermitUserEnvironment no
+
+# --- Divers ---
+PrintMotd no
+AcceptEnv LANG LC_*
+Subsystem sftp /usr/lib/openssh/sftp-server
+
+# --- Crypto durcie ---
+KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org
+Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+HostKeyAlgorithms ssh-ed25519
+
+# --- Restrictions specifiques au user deploy ---
+# Le deploy a besoin du TCP forwarding pour le jump host (VPS → Pi)
+# Mais restreint au Pi uniquement (PermitOpen a ajouter quand IP mesh connue)
+Match User {{ base_deploy_user }}
+  AllowTcpForwarding yes
+  AllowAgentForwarding no

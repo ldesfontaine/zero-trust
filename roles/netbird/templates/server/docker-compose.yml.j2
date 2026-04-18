@@ -1,0 +1,100 @@
+# {{ ansible_managed }}
+# NetBird Server v0.65.0+ — derriere Traefik Edge
+#
+# 2 services : netbird-server (tout-en-un) + dashboard (UI)
+# STUN UDP 3478 expose directement (ne peut pas passer par Traefik)
+# Tout le reste est route par Traefik via labels Docker
+
+services:
+
+  # --- NetBird Server (management + signal + relay + STUN) ---
+  netbird-server:
+    image: {{ netbird_server_image }}:{{ netbird_server_version }}
+    container_name: netbird-server
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      # Necessaire pour le STUN qui bind sur UDP 3478
+      - NET_BIND_SERVICE
+    ports:
+      # STUN public — ne peut PAS etre proxifie par Traefik
+      - "0.0.0.0:{{ netbird_server_stun_port }}:{{ netbird_server_stun_port }}/udp"
+    volumes:
+      - netbird-data:/var/lib/netbird
+      - ./config.yaml:/etc/netbird/config.yaml:ro
+    networks:
+      - {{ netbird_server_network_name }}
+{# Mode TLS wildcard : cert DEFAULT du TLS store, pas de certresolver par router #}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network={{ netbird_server_network_name }}"
+      # --- Router gRPC (signal + management) ---
+      - "traefik.http.routers.netbird-grpc.rule=Host(`{{ netbird_server_domain }}`) && (PathPrefix(`/signalexchange.SignalExchange/`) || PathPrefix(`/management.ManagementService/`))"
+      - "traefik.http.routers.netbird-grpc.entrypoints=websecure"
+      - "traefik.http.routers.netbird-grpc.tls=true"
+{% if not traefik_wildcard_enabled %}
+      - "traefik.http.routers.netbird-grpc.tls.certresolver=letsencrypt"
+{% endif %}
+      - "traefik.http.routers.netbird-grpc.service=netbird-server-h2c"
+      - "traefik.http.routers.netbird-grpc.priority=100"
+      # --- Router backend (relay + API + OAuth2 + WebSocket) ---
+      - "traefik.http.routers.netbird-backend.rule=Host(`{{ netbird_server_domain }}`) && (PathPrefix(`/relay`) || PathPrefix(`/ws-proxy/`) || PathPrefix(`/api`) || PathPrefix(`/oauth2`))"
+      - "traefik.http.routers.netbird-backend.entrypoints=websecure"
+      - "traefik.http.routers.netbird-backend.tls=true"
+{% if not traefik_wildcard_enabled %}
+      - "traefik.http.routers.netbird-backend.tls.certresolver=letsencrypt"
+{% endif %}
+      - "traefik.http.routers.netbird-backend.service=netbird-server"
+      - "traefik.http.routers.netbird-backend.priority=100"
+      # --- Services Traefik ---
+      - "traefik.http.services.netbird-server.loadbalancer.server.port=80"
+      - "traefik.http.services.netbird-server-h2c.loadbalancer.server.port=80"
+      - "traefik.http.services.netbird-server-h2c.loadbalancer.server.scheme=h2c"
+
+  # --- Dashboard (UI web) ---
+  dashboard:
+    image: {{ netbird_server_dashboard_image }}:{{ netbird_server_dashboard_version }}
+    container_name: netbird-dashboard
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      # Nginx : ecrire/chown dans /var/lib/nginx, workers changent uid/gid
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+    tmpfs:
+      - /var/lib/nginx/tmp:noexec,nosuid
+      - /var/lib/nginx/logs:noexec,nosuid
+      - /var/cache/nginx:noexec,nosuid
+      - /tmp:noexec,nosuid
+    env_file:
+      - dashboard.env
+    networks:
+      - {{ netbird_server_network_name }}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network={{ netbird_server_network_name }}"
+      - "traefik.http.routers.netbird-dashboard.rule=Host(`{{ netbird_server_domain }}`)"
+      - "traefik.http.routers.netbird-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.netbird-dashboard.tls=true"
+{% if not traefik_wildcard_enabled %}
+      - "traefik.http.routers.netbird-dashboard.tls.certresolver=letsencrypt"
+{% endif %}
+      - "traefik.http.routers.netbird-dashboard.priority=1"
+      - "traefik.http.services.netbird-dashboard.loadbalancer.server.port=80"
+
+volumes:
+  netbird-data:
+
+networks:
+  {{ netbird_server_network_name }}:
+    name: {{ netbird_server_network_name }}
+    # internal: false — le relay a besoin de sortie internet
+    internal: false

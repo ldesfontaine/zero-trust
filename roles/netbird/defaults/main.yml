@@ -1,0 +1,100 @@
+# ============================================================
+# Defaults du role netbird (fusion server + config + client)
+#
+# Le role s'utilise UNIQUEMENT avec tasks_from explicite :
+#   - include_role: { name: netbird, tasks_from: server.yml }
+#   - include_role: { name: netbird, tasks_from: config.yml }
+#   - include_role: { name: netbird, tasks_from: client/main.yml }
+#
+# Les prefixes netbird_server_ / netbird_config_ / netbird_client_
+# sont conserves pour rester compatibles avec :
+#   - inventory/group_vars/all/versions.yml (netbird_server_version, ...)
+#   - -e netbird_client_setup_key=XXX (mode manuel)
+# ============================================================
+
+# ==========================================================
+# Server (netbird.yml deploye sur le VPS, mode server)
+# ==========================================================
+
+# --- Images ---
+netbird_server_version: "latest"  # source de verite : inventory/group_vars/all/versions.yml
+netbird_server_dashboard_version: "v2.36.0"  # source de verite : inventory/group_vars/all/versions.yml
+netbird_server_image: "netbirdio/netbird-server"
+netbird_server_dashboard_image: "netbirdio/dashboard"
+
+# --- Domaine et reseau ---
+# Derive de netbird_domain (group_vars/all.yml).
+netbird_server_domain: "{{ netbird_domain }}"
+netbird_server_data_dir: "/opt/modules/netbird-server"
+netbird_server_network_name: "netbird-server-net"
+
+# --- Ports ---
+# STUN est le seul port expose hors Docker (UDP, 0.0.0.0)
+netbird_server_stun_port: 3478
+
+# --- Store ---
+netbird_server_store_engine: "sqlite"
+
+# --- Secrets (references vault) ---
+# Doivent etre definis dans host_vars/<machine>_vault.yml :
+#   vault_netbird_auth_secret            → secret partage relay
+#   vault_netbird_store_encryption_key   → chiffrement datastore
+#   vault_netbird_auth_owner_email       → email admin initial
+#   vault_netbird_auth_owner_password    → mot de passe admin initial
+
+# ==========================================================
+# Config (groupes + ACLs via API REST, mode server uniquement)
+# ==========================================================
+
+# --- API ---
+# Traefik est deploye AVANT NetBird dans site.yml (Play 2),
+# donc le domaine est routable au moment de la config.
+netbird_config_api_url: "https://{{ netbird_domain }}/api"
+
+# --- Groupes de peers ---
+# Voir docs/03-FLUX.md section ACLs NetBird
+netbird_config_groups:
+  - admin
+  - dmz
+  - private
+  - agents
+
+# --- Port SSH ---
+# Utilise dans la policy 5 (private → dmz, backup rsync)
+netbird_config_ssh_port: "{{ base_ssh_port | default(2222) }}"
+
+# --- Secrets (references vault) ---
+# Doit etre defini dans host_vars/<machine>_vault.yml :
+#   vault_netbird_api_token → token API recupere manuellement au bootstrap
+
+# ==========================================================
+# Client (agent mesh sur chaque noeud)
+# ==========================================================
+
+# --- URL du serveur NetBird ---
+# Derivee de netbird_domain (group_vars/all.yml).
+netbird_client_server_url: "https://{{ netbird_domain }}"
+
+# --- Setup key (mode manuel) ---
+# Si fournie en -e, utilise cette cle directement (mode manuel).
+# Sinon, le role cree une cle one-time via l'API (mode auto).
+#   ansible-playbook ... -e netbird_client_setup_key="XXXXX"
+netbird_client_setup_key: ""
+
+# --- Mode auto : groupe NetBird ---
+# Determine par le groupe Ansible de la machine :
+#   group_names contient "dmz"     → netbird_client_group = "dmz"
+#   group_names contient "private" → netbird_client_group = "private"
+# Surchargeable dans host_vars si necessaire.
+# Le groupe determine les ACLs mesh (voir docs/03-FLUX.md).
+netbird_client_group: ""
+
+# --- API (mode auto) ---
+netbird_client_api_url: "{{ netbird_client_server_url }}/api"
+
+# --- Interface mesh ---
+netbird_client_interface: "wt0"
+
+# --- Secrets (mode auto) ---
+# vault_netbird_api_token dans host_vars/<machine>_vault.yml
+# Necessaire uniquement en mode auto (pas de -e setup_key).

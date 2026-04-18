@@ -1,0 +1,11 @@
+# Handlers du role netbird (server + client)
+
+- name: Redemarrer netbird server
+  community.docker.docker_compose_v2:
+    project_src: "{{ netbird_server_data_dir }}"
+    state: restarted
+
+- name: Redemarrer netbird
+  ansible.builtin.systemd:
+    name: netbird
+    state: restarted

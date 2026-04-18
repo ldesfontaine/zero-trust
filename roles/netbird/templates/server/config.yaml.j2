@@ -1,0 +1,51 @@
+# {{ ansible_managed }}
+# Configuration NetBird Server (v0.65.0+ combined)
+#
+# TLS gere par Traefik Edge — le serveur ecoute en HTTP sur :80.
+# STUN embarque sur UDP {{ netbird_server_stun_port }}.
+# IdP embarque (pas d'OIDC externe).
+
+server:
+  listenAddress: ":80"
+  exposedAddress: "https://{{ netbird_server_domain }}:443"
+
+  stunPorts:
+    - {{ netbird_server_stun_port }}
+
+  metricsPort: 9090
+  healthcheckAddress: ":9000"
+
+  logLevel: "info"
+  logFile: "console"
+
+  # Secret partage pour l'authentification relay
+  authSecret: "{{ vault_netbird_auth_secret }}"
+
+  dataDir: "/var/lib/netbird/"
+
+  disableAnonymousMetrics: true
+
+  # --- Reverse proxy (Traefik Edge) ---
+  reverseProxy:
+    trustedHTTPProxiesCount: 1
+
+  # --- Auth (IdP embarque) ---
+  auth:
+    issuer: "https://{{ netbird_server_domain }}/oauth2"
+    localAuthDisabled: false
+    signKeyRefreshEnabled: true
+    dashboardRedirectURIs:
+      - "https://{{ netbird_server_domain }}/nb-auth"
+      - "https://{{ netbird_server_domain }}/nb-silent-auth"
+    cliRedirectURIs:
+      - "http://localhost:53000/"
+{% if vault_netbird_auth_owner_email | default('') != '' %}
+    owner:
+      email: "{{ vault_netbird_auth_owner_email }}"
+      password: "{{ vault_netbird_auth_owner_password }}"
+{% endif %}
+
+  # --- Store ---
+  store:
+    engine: "{{ netbird_server_store_engine }}"
+    encryptionKey: "{{ vault_netbird_store_encryption_key }}"

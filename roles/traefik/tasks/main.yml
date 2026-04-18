@@ -1,0 +1,162 @@
+# ============================================================
+# Traefik — reverse proxy TLS (un role, deux modes)
+#
+# Mode edge (VPS) :
+#   - Ecoute 0.0.0.0:80 + :443
+#   - Challenge HTTP-01 Let's Encrypt
+#   - WAF Coraza + CrowdSec
+#   - Access logs pour CrowdSec
+#
+# Mode internal (Pi) :
+#   - Ecoute IP_MESH:443 uniquement
+#   - Challenge DNS-01 Let's Encrypt
+#   - Pas de WAF, pas de CrowdSec (trafic mesh truste)
+#
+# Le compose ne contient QUE socket-proxy-net.
+# Traefik se connecte aux reseaux de chaque service APRES le deploy.
+# ============================================================
+
+# Detection automatique du mode TLS :
+# - Token Cloudflare present (>10 chars) → DNS-01 + wildcard
+# - Sinon                                 → HTTP-01 classique (fallback)
+# Pas de variable manuelle a switcher.
+- name: "Traefik — Detecter le mode TLS"
+  ansible.builtin.set_fact:
+    traefik_tls_mode: "{{ 'dns' if traefik_wildcard_enabled else 'http' }}"
+
+- name: "Traefik — Mode TLS detecte"
+  ansible.builtin.debug:
+    msg: "TLS mode: {{ traefik_tls_mode }}{% if traefik_tls_mode == 'dns' %} (wildcard *.{{ base_domain }}){% else %} (un cert par service){% endif %}"
+
+# En mode internal (Pi mesh-only), le port 80 n'est jamais expose publiquement,
+# donc le challenge HTTP-01 ne peut pas aboutir. Le seul chemin viable pour
+# obtenir un cert Let's Encrypt est DNS-01 via Cloudflare.
+- name: "Traefik — Verifier le token Cloudflare en mode internal"
+  ansible.builtin.fail:
+    msg: >-
+      Le mode internal necessite un token Cloudflare pour le challenge DNS.
+      vault_cloudflare_dns_api_token est vide ou trop court.
+  when:
+    - traefik_mode == "internal"
+    - traefik_tls_mode != "dns"
+
+- name: "Traefik — Creer le repertoire du module"
+  ansible.builtin.file:
+    path: "{{ traefik_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "Traefik — Creer le repertoire de config"
+  ansible.builtin.file:
+    path: "{{ traefik_data_dir }}/config"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "Traefik — Creer le repertoire de config dynamique"
+  ansible.builtin.file:
+    path: "{{ traefik_data_dir }}/config/dynamic"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "Traefik — Generer la config statique"
+  ansible.builtin.template:
+    src: traefik.yml.j2
+    dest: "{{ traefik_data_dir }}/config/traefik.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Redemarrer traefik
+
+# Config dynamique : en mode dns, declare le cert wildcard comme default.
+# Watch: true dans le provider file → recharge sans restart (mais on notify
+# quand meme au cas ou le mode TLS a change = fichier (in)existant/vide).
+- name: "Traefik — Deployer la config dynamique TLS"
+  ansible.builtin.template:
+    src: dynamic.yml.j2
+    dest: "{{ traefik_data_dir }}/config/dynamic/tls.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Redemarrer traefik
+
+# Persistance acme.json via bind mount — survit au rebuild du container.
+# Le cert est aussi sauvegarde chiffre dans backups/traefik/acme.json.vault
+# du repo, et restaure sur une machine neuve (anti rate limit Let's Encrypt :
+# 5 certs identiques / 7 jours).
+- name: "Traefik — Creer le repertoire letsencrypt"
+  ansible.builtin.file:
+    path: "{{ traefik_data_dir }}/letsencrypt"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: "Traefik — Verifier si un acme.json existe deja sur l'hote"
+  ansible.builtin.stat:
+    path: "{{ traefik_data_dir }}/letsencrypt/acme.json"
+  register: traefik_acme_live_stat
+
+- name: "Traefik — Verifier si un backup acme.json chiffre existe localement"
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../backups/traefik/acme.json.vault"
+  register: traefik_acme_backup_stat
+  delegate_to: localhost
+  become: false
+
+# Restauration UNIQUEMENT si aucun acme.json n'existe deja sur l'hote.
+# Sinon on ecraserait les certs renouveles par Traefik (divergence repo/live).
+- name: "Traefik — Restaurer acme.json depuis le backup chiffre"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../backups/traefik/acme.json.vault"
+    dest: "{{ traefik_data_dir }}/letsencrypt/acme.json"
+    owner: root
+    group: root
+    mode: "0600"
+    decrypt: true
+  when:
+    - traefik_acme_backup_stat.stat.exists
+    - not traefik_acme_live_stat.stat.exists
+
+- name: "Traefik — Avertir si pas de backup ni d'acme.json existant"
+  ansible.builtin.debug:
+    msg: >-
+      Pas de backup acme.json dans backups/traefik/ et pas d'acme.json sur l'hote.
+      Traefik demandera un nouveau certificat a Let's Encrypt.
+      ATTENTION rate limit : 5 certs identiques / 7 jours.
+      Apres obtention, faire :
+        scp -P {{ base_ssh_port }} deploy@<VPS_IP>:{{ traefik_data_dir }}/letsencrypt/acme.json /tmp/acme.json
+        ansible-vault encrypt /tmp/acme.json --output backups/traefik/acme.json.vault
+        git add backups/traefik/acme.json.vault && git commit
+  when:
+    - not traefik_acme_backup_stat.stat.exists
+    - not traefik_acme_live_stat.stat.exists
+
+- name: "Traefik — Deployer le docker-compose"
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ traefik_data_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Redemarrer traefik
+
+# Forcer l'application de la config AVANT de rendre la main au playbook.
+# Le handler s'execute sinon en fin de play et recreate le container
+# → perd les connexions reseau ajoutees ensuite par connect_networks.yml.
+- name: "Traefik — Appliquer les changements de config en attente"
+  ansible.builtin.meta: flush_handlers
+
+- name: "Traefik — Lancer le container"
+  community.docker.docker_compose_v2:
+    project_src: "{{ traefik_data_dir }}"
+    state: present
+
+# Connexion aux reseaux des services : pas ici.
+# Cf. tasks/connect_networks.yml — invoque explicitement depuis
+# playbooks/site.yml APRES le deploy des services.

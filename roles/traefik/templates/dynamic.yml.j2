@@ -1,0 +1,20 @@
+# {{ ansible_managed }}
+# Config dynamique Traefik — TLS store default
+#
+# En mode DNS-01 : le cert wildcard est le default cert de Traefik.
+# Tous les routers avec tls=true (sans certresolver explicite) servent
+# automatiquement le wildcard — plus besoin de label par service.
+#
+# En mode HTTP-01 : fichier vide. Chaque service declare son propre
+# certresolver dans ses labels (pattern conditionnel dans les composes).
+{% if traefik_tls_mode == "dns" %}
+tls:
+  stores:
+    default:
+      defaultGeneratedCert:
+        resolver: letsencrypt
+        domain:
+          main: "{{ base_domain }}"
+          sans:
+            - "*.{{ base_domain }}"
+{% endif %}

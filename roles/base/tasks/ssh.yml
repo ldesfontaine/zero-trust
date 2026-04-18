@@ -1,0 +1,53 @@
+# Hardening SSH : port custom, cle only, root off, password off
+#
+# Restart async pour ne pas tuer la connexion Ansible quand le port change.
+# Le switch port/user/key est fait ici, pas dans main.yml.
+
+- name: "SSH — Deployer la configuration durcie"
+  ansible.builtin.template:
+    src: sshd_config.j2
+    dest: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: "0600"
+    validate: "sshd -t -f %s"
+  register: _sshd_config
+
+- name: "SSH — Activer le service sshd"
+  ansible.builtin.systemd:
+    name: sshd
+    enabled: true
+    state: started
+
+# Restart async : lance le restart et rend la main immediatement
+# Evite le timeout si la connexion SSH se coupe (changement de port)
+- name: "SSH — Redemarrer sshd (async pour eviter le lockout)"
+  ansible.builtin.systemd: # noqa: no-handler
+    name: sshd
+    state: restarted
+  async: 1
+  poll: 0
+  failed_when: false
+  when: _sshd_config is changed
+
+- name: "SSH — Attendre que le port durci soit disponible"
+  ansible.builtin.wait_for: # noqa: no-handler
+    host: "{{ ansible_host }}"
+    port: "{{ base_ssh_port }}"
+    delay: 2
+    timeout: 30
+  delegate_to: localhost
+  become: false
+  when: _sshd_config is changed
+
+# Basculer la connexion Ansible sur le nouveau port et le user deploy
+- name: "SSH — Basculer la connexion sur le port durci"
+  ansible.builtin.set_fact:
+    ansible_port: "{{ base_ssh_port }}"
+  when: ansible_port | int != base_ssh_port | int
+
+- name: "SSH — Basculer sur le user deploy"
+  ansible.builtin.set_fact:
+    ansible_user: "{{ base_deploy_user }}"
+    ansible_ssh_private_key_file: "{{ base_deploy_ssh_private_key }}"
+  when: ansible_user == 'root'

@@ -1,0 +1,6 @@
+# Handlers du role portfolio
+
+- name: Redemarrer portfolio
+  community.docker.docker_compose_v2:
+    project_src: "{{ portfolio_data_dir }}"
+    state: restarted

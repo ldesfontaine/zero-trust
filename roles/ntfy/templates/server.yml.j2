@@ -1,0 +1,26 @@
+# {{ ansible_managed }}
+# Configuration du serveur ntfy
+# Documentation : https://docs.ntfy.sh/config/
+
+# --- Serveur ---
+base-url: "https://{{ ntfy_domain }}"
+listen-http: ":{{ ntfy_port }}"
+behind-proxy: true
+
+# --- Interface web désactivée (API REST toujours accessible) ---
+web-root: "disable"
+
+# --- Relay push via Firebase/APNs pour notifications instantanées sur mobile ---
+upstream-base-url: "https://ntfy.sh"
+
+# --- Stockage ---
+cache-file: "/var/cache/ntfy/cache.db"
+cache-duration: "24h"
+attachment-cache-dir: "/var/cache/ntfy/attachments"
+attachment-total-size-limit: "100M"
+attachment-file-size-limit: "10M"
+attachment-expiry-duration: "6h"
+
+# --- Authentification ---
+auth-file: "/var/cache/ntfy/auth.db"
+auth-default-access: "deny-all"

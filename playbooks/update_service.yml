@@ -1,0 +1,31 @@
+# ============================================================
+# Mise a jour de la version d'un service existant.
+# Ne touche PAS aux .env, au firewall, ni au reseau.
+# Utilise par le workflow GitHub deploy_service.yml.
+#
+# Usage : ansible-playbook playbooks/update_service.yml \
+#           -e target_service=portfolio \
+#           -e target_version=1.4.0 \
+#           --limit vps
+# ============================================================
+
+- name: "Mise a jour d'un service"
+  hosts: all
+  become: true
+
+  tasks:
+    - name: "Verifier que le service est bien assigne a cette machine"
+      ansible.builtin.assert:
+        that:
+          - target_service in machine_services
+        fail_msg: >
+          Le service '{{ target_service }}' n'est pas assigne a cette machine.
+          Services disponibles : {{ machine_services | join(', ') }}
+
+    - name: "Pull la nouvelle image et redemarrer"
+      community.docker.docker_compose_v2:
+        project_src: "/opt/modules/{{ target_service }}"
+        pull: always
+        state: present
+      environment:
+        IMAGE_VERSION: "{{ target_version }}"

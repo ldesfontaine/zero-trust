@@ -1,0 +1,17 @@
+# ============================================================
+# Failsafe : le role netbird ne s'utilise PAS directement.
+# Il s'appelle toujours avec tasks_from explicite :
+#   - include_role: { name: netbird, tasks_from: server.yml }
+#   - include_role: { name: netbird, tasks_from: config.yml }
+#   - include_role: { name: netbird, tasks_from: client/main.yml }
+# Voir roles/netbird/README.md.
+# ============================================================
+
+- name: "NetBird — Appel direct du role non supporte"
+  ansible.builtin.fail:
+    msg: >-
+      Le role netbird s'utilise avec tasks_from explicite :
+        - include_role: { name: netbird, tasks_from: server.yml }
+        - include_role: { name: netbird, tasks_from: config.yml }
+        - include_role: { name: netbird, tasks_from: client/main.yml }
+      Voir roles/netbird/README.md.

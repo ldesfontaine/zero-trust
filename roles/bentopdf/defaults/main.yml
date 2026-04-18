@@ -1,0 +1,21 @@
+# Valeurs par defaut du role bentopdf
+# Peuvent etre surchargees dans host_vars/<machine>.yml
+
+# --- Image Docker ---
+# BentoPDF est une image nginx-unprivileged qui sert un site 100% 
+# client-side (HTML/JS/WASM). Zero traitement serveur, tout se 
+# passe dans le navigateur du visiteur.
+bentopdf_image: "ghcr.io/alam00000/bentopdf"
+
+# Version pinnee : valeur reelle dans inventory/group_vars/all/versions.yml
+# Ne JAMAIS mettre "latest" ici : reproductibilite zero.
+bentopdf_version: "v1.16.1"
+
+# --- Reseau et domaine ---
+bentopdf_domain: "pdf.{{ base_domain }}"
+bentopdf_network_name: "bentopdf-net"
+# Port INTERNE du container (nginx-unprivileged default).
+bentopdf_port: 8080
+
+# --- Stockage ---
+bentopdf_data_dir: "/opt/modules/bentopdf"

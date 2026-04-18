@@ -1,0 +1,131 @@
+# Enrollment du noeud dans le mesh NetBird
+#
+# Deux modes :
+#   Manuel : netbird_client_setup_key fourni en -e → utilise directement
+#   Auto   : pas de -e → cree une setup key via l'API NetBird
+#
+# Mode auto necessite vault_netbird_api_token dans vault.
+
+- name: "NetBird Client — Verifier si deja connecte"
+  ansible.builtin.command:
+    cmd: netbird status
+  register: netbird_client_status
+  changed_when: false
+  failed_when: false
+
+- name: "NetBird Client — Skip si ni setup key ni token API disponible"
+  ansible.builtin.debug:
+    msg: >-
+      Ni setup key (-e netbird_client_setup_key) ni token API
+      (vault_netbird_api_token) disponible. Enrollment impossible.
+      Remplir le token apres l'etape manuelle
+      (voir docs/08-BOOTSTRAP.md etape 1.4) puis relancer.
+  when:
+    - "'Connected' not in netbird_client_status.stdout"
+    - (netbird_client_setup_key | default('')) | length == 0
+    - (vault_netbird_api_token | default('')) | length == 0 or vault_netbird_api_token == 'TO_FILL'
+
+- name: "NetBird Client — Abort si enrollment requis mais impossible"
+  ansible.builtin.meta: end_role
+  when:
+    - "'Connected' not in netbird_client_status.stdout"
+    - (netbird_client_setup_key | default('')) | length == 0
+    - (vault_netbird_api_token | default('')) | length == 0 or vault_netbird_api_token == 'TO_FILL'
+
+# --- Mode auto : determiner le groupe et creer la setup key ---
+
+- name: "NetBird Client — Determiner le groupe NetBird depuis l'inventaire"
+  ansible.builtin.set_fact:
+    netbird_client_resolved_group: >-
+      {{ netbird_client_group
+         | default(('dmz' if 'dmz' in group_names else ('private' if 'private' in group_names else '')), true) }}
+  when:
+    - "'Connected' not in netbird_client_status.stdout"
+    - (netbird_client_setup_key | default('')) | length == 0
+
+- name: "NetBird Client — Recuperer l'ID du groupe via API"
+  ansible.builtin.uri:
+    url: "{{ netbird_client_api_url }}/groups"
+    method: GET
+    headers:
+      Authorization: "Token {{ vault_netbird_api_token }}"
+      Accept: "application/json"
+    status_code: 200
+  register: netbird_client_api_groups
+  when:
+    - "'Connected' not in netbird_client_status.stdout"
+    - (netbird_client_setup_key | default('')) | length == 0
+
+- name: "NetBird Client — Extraire l'ID du groupe cible"
+  ansible.builtin.set_fact:
+    netbird_client_group_id: >-
+      {{ (netbird_client_api_groups.json
+          | selectattr('name', 'equalto', netbird_client_resolved_group)
+          | map(attribute='id') | list | first) }}
+  when:
+    - "'Connected' not in netbird_client_status.stdout"
+    - (netbird_client_setup_key | default('')) | length == 0
+
+- name: "NetBird Client — Creer une setup key one-time via API"
+  ansible.builtin.uri:
+    url: "{{ netbird_client_api_url }}/setup-keys"
+    method: POST
+    headers:
+      Authorization: "Token {{ vault_netbird_api_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      name: "auto-{{ inventory_hostname }}"
+      type: "one-off"
+      usage_limit: 1
+      auto_groups:
+        - "{{ netbird_client_group_id }}"
+      expires_in: 3600
+    status_code: 200
+  register: netbird_client_api_key_result
+  when:
+    - "'Connected' not in netbird_client_status.stdout"
+    - (netbird_client_setup_key | default('')) | length == 0
+  no_log: true
+
+- name: "NetBird Client — Stocker la setup key a utiliser"
+  ansible.builtin.set_fact:
+    netbird_client_effective_key: >-
+      {{ netbird_client_setup_key
+         if ((netbird_client_setup_key | default('')) | length > 0)
+         else netbird_client_api_key_result.json.key }}
+  when: "'Connected' not in netbird_client_status.stdout"
+  no_log: true
+
+# --- Enrollment (commun aux deux modes) ---
+
+- name: "NetBird Client — Enroller le noeud avec la setup key"
+  ansible.builtin.command:
+    cmd: >-
+      netbird up
+      --setup-key {{ netbird_client_effective_key }}
+      --management-url {{ netbird_client_server_url }}
+  when: "'Connected' not in netbird_client_status.stdout"
+  changed_when: true
+  no_log: true
+
+- name: "NetBird Client — Attendre que l'interface mesh soit active"
+  ansible.builtin.wait_for:
+    path: "/sys/class/net/{{ netbird_client_interface }}"
+    state: present
+    timeout: 30
+
+- name: "NetBird Client — Recuperer l'IP mesh"
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail &&
+      ip -4 addr show {{ netbird_client_interface }}
+      | grep -oP 'inet \K[0-9.]+'
+    executable: /bin/bash
+  register: netbird_client_mesh_ip_raw
+  changed_when: false
+
+- name: "NetBird Client — Stocker l'IP mesh comme fact"
+  ansible.builtin.set_fact:
+    netbird_client_ip: "{{ netbird_client_mesh_ip_raw.stdout }}"
+    cacheable: true

@@ -1,0 +1,30 @@
+# Variables specifiques au VPS (non chiffre)
+
+# --- SSH ---
+base_ssh_port: 2222
+
+# --- Firewall (nftables) ---
+base_nftables_input_tcp_allow:
+  - 80    # Traefik Edge HTTP
+  - 443   # Traefik Edge HTTPS
+base_nftables_enable_mesh: true
+base_nftables_input_udp_allow:
+  - 3478  # NetBird STUN
+base_nftables_output_allow:
+  - { dest: "9.9.9.9", port: 53, proto: "udp", comment: "DNS Quad9" }
+  - { dest: "1.1.1.1", port: 53, proto: "udp", comment: "DNS Cloudflare" }
+  - { dest: "0.0.0.0/0", port: 443, proto: "tcp", comment: "HTTPS (GHCR, Let's Encrypt)" }
+  - { dest: "0.0.0.0/0", port: 80, proto: "tcp", comment: "HTTP (Let's Encrypt challenge)" }
+
+# --- Traefik (mode edge) ---
+# Mode TLS auto-detecte par le role : token Cloudflare present → DNS-01 + wildcard
+traefik_mode: "edge"
+traefik_listen_address: "0.0.0.0"
+traefik_tls_email: "{{ vault_admin_email }}"
+traefik_enable_waf: false       # A reactiver quand le plugin Coraza sera configure
+traefik_enable_crowdsec: false   # A reactiver quand le role CrowdSec existera
+
+# Reseaux hors machine_services que Traefik doit rejoindre
+# (services deployes via machine_mesh notamment).
+traefik_extra_networks:
+  - netbird-server-net

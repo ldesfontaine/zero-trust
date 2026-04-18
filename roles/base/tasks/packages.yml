@@ -1,0 +1,17 @@
+# Installation des paquets systeme essentiels
+
+- name: "Paquets — Mettre a jour le cache APT"
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: "Paquets — Installer les paquets de base"
+  ansible.builtin.apt:
+    name: "{{ base_packages }}"
+    state: present
+
+- name: "Paquets — Activer les mises a jour automatiques de securite"
+  ansible.builtin.systemd:
+    name: unattended-upgrades
+    enabled: true
+    state: started

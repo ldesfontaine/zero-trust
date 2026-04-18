@@ -1,0 +1,72 @@
+# {{ ansible_managed }}
+# Config statique Traefik — mode {{ traefik_mode }}
+
+# --- API (dashboard desactive en prod) ---
+api:
+  dashboard: false
+
+# --- Ping (endpoint interne pour le healthcheck Docker) ---
+# Utilise par `traefik healthcheck` dans le healthcheck du compose.
+ping: {}
+
+# --- Entrypoints ---
+entryPoints:
+{% if traefik_mode == "edge" %}
+  # HTTP → redirect HTTPS + challenge ACME HTTP-01
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+{% endif %}
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        certResolver: letsencrypt
+
+# --- Certificats TLS (Let's Encrypt) ---
+# Mode auto-detecte par le role (dns si token Cloudflare present, sinon http)
+# En mode dns, le cert wildcard est declare dans la config dynamique
+# (/etc/traefik/dynamic/tls.yml) via tls.stores.default.defaultGeneratedCert.
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "{{ traefik_tls_email }}"
+      storage: /letsencrypt/acme.json
+{% if traefik_tls_mode == "dns" %}
+      dnsChallenge:
+        provider: cloudflare
+        resolvers:
+          - "1.1.1.1:53"
+          - "9.9.9.9:53"
+{% elif traefik_mode == "edge" %}
+      httpChallenge:
+        entryPoint: web
+{% endif %}
+
+# --- Providers (Docker via socket proxy + fichier dynamique pour TLS store) ---
+# Pas de "network:" global ici : chaque service DOIT declarer le label
+# traefik.docker.network=<service>-net dans son compose, sinon Traefik
+# ne sait pas sur quel reseau joindre le backend (il est connecte a
+# plusieurs reseaux via "docker network connect").
+providers:
+  docker:
+    endpoint: "tcp://socket-proxy:2375"
+    exposedByDefault: false
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+# --- Logs ---
+log:
+  level: WARN
+
+{% if traefik_enable_crowdsec %}
+# Access logs pour CrowdSec (mode edge uniquement)
+accessLog:
+  filePath: /var/log/traefik/access.log
+  bufferingSize: 100
+{% endif %}

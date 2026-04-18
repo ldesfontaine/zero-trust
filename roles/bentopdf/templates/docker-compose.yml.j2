@@ -1,0 +1,66 @@
+# {{ ansible_managed }}
+# BentoPDF — toolkit PDF privacy-first (100% client-side)
+#
+# L'image nginx-unprivileged (UID 101 par defaut) sert un site 
+# statique qui traite les PDF directement dans le navigateur du 
+# visiteur. Aucune donnee ne transite par le serveur.
+#
+# Reseau isole (internal: true), Traefik Edge rejoint bentopdf-net
+# via docker network connect (cf. roles/traefik/tasks/connect_networks.yml).
+
+services:
+  bentopdf:
+    image: {{ bentopdf_image }}:{{ bentopdf_version }}
+    container_name: bentopdf
+    restart: unless-stopped
+
+    # --- Securite ---
+    # Stateless : l'app ne doit rien ecrire sur disque.
+    read_only: true
+    # nginx-unprivileged a besoin d'ecrire quelques fichiers temporaires
+    # en runtime (cache, PID, temp uploads nginx). read_only bloque
+    # l'ecriture sur tout le reste, ces tmpfs sont la seule exception.
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+      - /var/run
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # --- Healthcheck ---
+    # wget : pre-installe dans l'image nginx alpine (curl absent)
+    # --spider : juste verifier le 200 sans telecharger le corps
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--spider", "http://0.0.0.0:{{ bentopdf_port }}/"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+    # --- Traefik labels ---
+    # Routing via le Host header (pdf.<domain>).
+    # certresolver conditionnel : en mode wildcard DNS-01, le cert 
+    # default est applique globalement par le TLS store (cf. dynamic.yml.j2) 
+    # → NE PAS forcer certresolver (sinon override et rate limit LE).
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bentopdf.rule=Host(`{{ bentopdf_domain }}`)"
+      - "traefik.http.routers.bentopdf.entrypoints=websecure"
+      - "traefik.http.routers.bentopdf.tls=true"
+{% if not traefik_wildcard_enabled %}
+      - "traefik.http.routers.bentopdf.tls.certresolver=letsencrypt"
+{% endif %}
+      - "traefik.http.services.bentopdf.loadbalancer.server.port={{ bentopdf_port }}"
+      # CONTRAT B : indiquer a Traefik sur quel reseau joindre le backend
+      - "traefik.docker.network={{ bentopdf_network_name }}"
+
+    networks:
+      - {{ bentopdf_network_name }}
+
+networks:
+  {{ bentopdf_network_name }}:
+    name: {{ bentopdf_network_name }}
+    # internal: true = pas de sortie internet (pas de relay externe requis)
+    internal: true

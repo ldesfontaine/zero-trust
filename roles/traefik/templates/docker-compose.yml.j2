@@ -1,0 +1,64 @@
+# {{ ansible_managed }}
+# Traefik {{ traefik_mode }} — reverse proxy TLS
+#
+# socket-proxy-net (internal) pour le Docker socket proxy.
+# traefik-public (edge uniquement) pour publier les ports sur le host.
+# Traefik rejoint les reseaux des services via le role (docker network connect).
+
+services:
+  traefik:
+    image: traefik:{{ traefik_version }}
+    container_name: traefik-{{ traefik_mode }}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+{% if traefik_mode == "edge" %}
+    # Port 80 uniquement sur edge (redirect HTTP → HTTPS + challenge ACME)
+    ports:
+      - "{{ traefik_listen_address }}:80:80"
+      - "{{ traefik_listen_address }}:443:443"
+{% else %}
+    ports:
+      - "{{ traefik_listen_address }}:443:443"
+{% endif %}
+{% if traefik_tls_mode == "dns" %}
+    # Token Cloudflare injecte en env direct (pas de fichier .env sur disque)
+    environment:
+      CF_DNS_API_TOKEN: "{{ vault_cloudflare_dns_api_token }}"
+{% endif %}
+    volumes:
+      - ./config:/etc/traefik:ro
+      # Bind mount pour survivre a un rebuild du container et permettre
+      # backup/restore via Ansible (cf. roles/traefik/tasks/main.yml).
+      - "{{ traefik_data_dir }}/letsencrypt:/letsencrypt"
+{% if traefik_enable_crowdsec %}
+      # Logs pour CrowdSec (volume partage en ecriture)
+      - traefik-logs:/var/log/traefik
+{% endif %}
+    networks:
+      - socket-proxy-net
+{% if traefik_mode == "edge" %}
+      - traefik-public
+{% endif %}
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+{% if traefik_enable_crowdsec %}
+volumes:
+  traefik-logs:
+    name: traefik-{{ traefik_mode }}-logs
+
+{% endif %}
+networks:
+  socket-proxy-net:
+    external: true
+{% if traefik_mode == "edge" %}
+  traefik-public:
+    name: traefik-public
+{% endif %}

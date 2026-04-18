@@ -1,0 +1,30 @@
+# Socket proxy — acces securise a l'API Docker
+# Traefik et les autres services passent par ce proxy
+# au lieu d'acceder directement au socket Docker.
+
+- name: "Docker — Creer le repertoire du socket proxy"
+  ansible.builtin.file:
+    path: "{{ docker_socket_proxy_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "Docker — Deployer le compose du socket proxy"
+  ansible.builtin.template:
+    src: docker-compose.socket-proxy.yml.j2
+    dest: "{{ docker_socket_proxy_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Redemarrer socket proxy
+
+- name: "Docker — Creer le reseau socket-proxy-net"
+  community.docker.docker_network:
+    name: socket-proxy-net
+    internal: true
+
+- name: "Docker — Lancer le socket proxy"
+  community.docker.docker_compose_v2:
+    project_src: "{{ docker_socket_proxy_dir }}"
+    state: present
