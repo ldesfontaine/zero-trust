@@ -19,12 +19,17 @@
     mode: "0644"
   notify: Redemarrer socket proxy
 
+# docker_network et docker_compose_v2 requierent un docker socket accessible.
+# En --check sur une machine fraiche, docker-ce n'est pas encore reellement
+# installe (cf. engine.yml) donc ces tasks echoueraient sur "cannot connect".
 - name: "Docker — Creer le reseau socket-proxy-net"
   community.docker.docker_network:
     name: socket-proxy-net
     internal: true
+  when: not ansible_check_mode
 
 - name: "Docker — Lancer le socket proxy"
   community.docker.docker_compose_v2:
     project_src: "{{ docker_socket_proxy_dir }}"
     state: present
+  when: not ansible_check_mode

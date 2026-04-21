@@ -21,14 +21,19 @@
     filename: netbird
     state: present
 
+# En --check, apt_repository ci-dessus reporte 'changed' sans ecrire le fichier.
+# apt update ne voit pas le repo NetBird et l'install echoue. En real run, OK.
 - name: "NetBird Client — Installer le paquet netbird"
   ansible.builtin.apt:
     name: netbird
     state: present
     update_cache: true
+  when: not ansible_check_mode
 
+# Le service netbird n'existe pas tant que le paquet n'est pas reellement installe
 - name: "NetBird Client — Activer et demarrer le service"
   ansible.builtin.systemd:
     name: netbird
     enabled: true
     state: started
+  when: not ansible_check_mode

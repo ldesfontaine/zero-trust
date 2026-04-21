@@ -37,14 +37,20 @@
     filename: docker
     state: present
 
+# En --check, apt_repository ci-dessus reporte 'changed' sans ecrire le fichier,
+# donc apt update ne voit pas le repo Docker et l'install echoue sur 'No package
+# matching docker-ce'. En real run, le repo est ecrit et l'install marche.
 - name: "Docker — Installer les paquets Docker CE"
   ansible.builtin.apt:
     name: "{{ docker_packages }}"
     state: present
     update_cache: true
+  when: not ansible_check_mode
 
+# Le service docker n'existe pas tant que docker-ce n'est pas reellement installe
 - name: "Docker — Activer et demarrer le service"
   ansible.builtin.systemd:
     name: docker
     enabled: true
     state: started
+  when: not ansible_check_mode

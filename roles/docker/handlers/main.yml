@@ -1,12 +1,19 @@
 # Handlers du role docker
+#
+# Les deux handlers sont gardes en check_mode : en --check sur machine fraiche,
+# docker-ce n'est pas reellement installe donc le service docker n'existe pas
+# et le socket proxy ne peut pas etre lance. Les tasks 'notify' sont declenchees
+# par des templates (daemon.json, compose socket-proxy) qui s'executent en check.
 
 - name: Redemarrer docker
   ansible.builtin.systemd:
     name: docker
     state: restarted
+  when: not ansible_check_mode
 
 - name: Redemarrer socket proxy
   community.docker.docker_compose_v2:
     project_src: "{{ docker_socket_proxy_dir }}"
     state: present
     recreate: always
+  when: not ansible_check_mode
