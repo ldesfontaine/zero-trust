@@ -60,6 +60,20 @@
       when: machine_mesh.server | default(false)
       tags: [netbird, netbird-server]
 
+    # Un restart Traefik (declenche si le compose ou la config change) deconnecte
+    # tous les reseaux Docker du container. Les tasks suivantes (NetBird Config,
+    # Client) passent par mesh.{{ base_domain }} → 504 tant que Traefik n'est
+    # pas reconnecte a netbird-server-net. Idempotent.
+    - name: "Traefik — Reconnecter a netbird-server-net (pre NetBird config)"
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../roles/_shared/tasks/traefik_reconnect_network.yml"
+      vars:
+        network_name: "netbird-server-net"
+        traefik_container: "traefik-{{ traefik_mode }}"
+      when:
+        - machine_mesh.server | default(false)
+        - "'traefik' in machine_services"
+      tags: [traefik, netbird]
+
     - name: "NetBird — Configurer les groupes et ACLs"
       ansible.builtin.include_role:
         name: netbird

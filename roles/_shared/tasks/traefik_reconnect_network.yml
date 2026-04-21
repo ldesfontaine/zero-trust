@@ -1,0 +1,22 @@
+# Reconnecter le container Traefik a un reseau Docker donne, idempotent.
+#
+# Usage typique : apres un restart Traefik (handler qui recreate le container),
+# les connexions reseau Docker sont perdues. Les tasks suivantes qui passent par
+# Traefik (ex: appel a mesh.{{ base_domain }} pour l'API NetBird) prennent 504
+# tant que Traefik n'est pas reconnecte au backend.
+#
+# Variables attendues (passees via include_tasks vars) :
+#   network_name      : nom du reseau Docker (ex: netbird-server-net)
+#   traefik_container : nom du container Traefik (ex: traefik-edge)
+
+- name: "Traefik — Reconnecter {{ traefik_container }} a {{ network_name }}"
+  ansible.builtin.command:
+    cmd: "docker network connect {{ network_name }} {{ traefik_container }}"
+  register: traefik_reconnect_result
+  changed_when: traefik_reconnect_result.rc == 0
+  failed_when:
+    - traefik_reconnect_result.rc != 0
+    - "'already exists' not in traefik_reconnect_result.stderr"
+    - "'not found' not in traefik_reconnect_result.stderr"
+  # already exists = deja connecte → idempotent
+  # not found = reseau ou container pas encore cree → skip (1er run)
