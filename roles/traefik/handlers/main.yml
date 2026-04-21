@@ -1,7 +1,10 @@
 # Handlers du role traefik
 
+# Gate check_mode : en --check, le compose n'est pas ecrit sur disque,
+# docker_compose_v2 plante avec "path is not a directory". Skip propre.
 - name: Redemarrer traefik
   community.docker.docker_compose_v2:
     project_src: "{{ traefik_data_dir }}"
     state: present
     recreate: always
+  when: not ansible_check_mode

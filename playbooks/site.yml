@@ -56,6 +56,8 @@
     - name: "Deployer Traefik"
       ansible.builtin.include_role:
         name: traefik
+        apply:
+          tags: [traefik]
       when: "'traefik' in machine_services"
       tags: [traefik]
 
@@ -145,5 +147,7 @@
       ansible.builtin.include_role:
         name: traefik
         tasks_from: connect_networks.yml
+        apply:
+          tags: [traefik]
       when: "'traefik' in machine_services"
       tags: [traefik]

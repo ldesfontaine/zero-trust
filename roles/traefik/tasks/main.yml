@@ -153,6 +153,20 @@
     - not traefik_acme_backup_stat.stat.exists
     - not traefik_acme_live_stat.stat.exists
 
+# Token CF dans .env separe — jamais en clair dans le compose sur disque.
+# no_log: true evite de leak le token via --diff ou logs Ansible.
+# Doit etre rendu AVANT le compose : docker compose lit .env au demarrage.
+- name: "Traefik — Deployer le fichier env (token Cloudflare)"
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ traefik_data_dir }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  when: traefik_tls_mode == "dns"
+  no_log: true
+  notify: Redemarrer traefik
+
 - name: "Traefik — Deployer le docker-compose"
   ansible.builtin.template:
     src: docker-compose.yml.j2
@@ -172,6 +186,7 @@
   community.docker.docker_compose_v2:
     project_src: "{{ traefik_data_dir }}"
     state: present
+  when: not ansible_check_mode
 
 # Connexion aux reseaux des services : pas ici.
 # Cf. tasks/connect_networks.yml — invoque explicitement depuis

@@ -24,9 +24,10 @@ services:
       - "{{ traefik_listen_address }}:443:443"
 {% endif %}
 {% if traefik_tls_mode == "dns" %}
-    # Token Cloudflare injecte en env direct (pas de fichier .env sur disque)
-    environment:
-      CF_DNS_API_TOKEN: "{{ vault_cloudflare_dns_api_token }}"
+    # Token Cloudflare dans .env separe (mode 0600, root:root), jamais inline
+    # ici — sinon leak via --diff Ansible (incident 2026-04-21).
+    env_file:
+      - .env
 {% endif %}
     volumes:
       - ./config:/etc/traefik:ro
