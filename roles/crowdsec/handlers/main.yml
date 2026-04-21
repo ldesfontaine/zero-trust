@@ -1,0 +1,20 @@
+# Handlers du role crowdsec
+
+# --- Engine (container) ---
+# Skip en --check : docker_compose_v2 exige project_src existant. En dry-run
+# le dossier est cree virtuellement, le handler echoue avec "not a directory".
+# En deploy reel, la task "Lancer le container" (state: present) recreate
+# deja le container si le compose a change → le handler devient redondant
+# au premier deploy de toute facon.
+- name: Redemarrer crowdsec
+  community.docker.docker_compose_v2:
+    project_src: "{{ crowdsec_data_dir }}"
+    state: restarted
+  when: not ansible_check_mode
+
+# --- Bouncer (service systemd host) ---
+# Pas de skip check_mode : systemd supporte le dry-run nativement.
+- name: "Redemarrer crowdsec-firewall-bouncer"
+  ansible.builtin.systemd:
+    name: crowdsec-firewall-bouncer
+    state: restarted

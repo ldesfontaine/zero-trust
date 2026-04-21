@@ -1,0 +1,130 @@
+# Valeurs par defaut du role crowdsec
+# Un role, deux modes :
+#   - engine  : container Docker (Phase 1) — detection + API
+#   - bouncer : paquet .deb host (Phase 2) — blocage nftables
+# Invocation : include_role: { name: crowdsec, tasks_from: engine.yml }
+
+# --- Image (Phase 1) ---
+crowdsec_version: "v1.7.7"  # source de verite : inventory/group_vars/all/versions.yml
+crowdsec_image: "crowdsecurity/crowdsec"
+
+# --- Reseau ---
+# internal: false car l'Engine appelle la Central API (api.crowdsec.net)
+# pour recuperer la blocklist communautaire et pousser des resumes anonymes.
+crowdsec_network_name: "crowdsec-net"
+
+# --- Persistance (bind mount) ---
+crowdsec_data_dir: "/opt/modules/crowdsec"
+
+# --- LAPI (Local API) ---
+# Exposee uniquement sur loopback host pour le bouncer host-level (Phase 2).
+# Jamais sur 0.0.0.0.
+crowdsec_lapi_bind: "127.0.0.1"
+crowdsec_lapi_port: 8080
+
+# --- Collections ---
+# Installees au boot par l'entrypoint de l'image via env COLLECTIONS.
+crowdsec_collections:
+  - "crowdsecurity/linux"
+  - "crowdsecurity/sshd"
+  - "crowdsecurity/traefik"
+  - "crowdsecurity/http-cve"
+  - "crowdsecurity/base-http-scenarios"
+
+# --- Whitelists ---
+# IPs/CIDR qui ne doivent JAMAIS etre bannies (anti auto-ban + protection mesh).
+# Par defaut : uniquement les ranges prives + mesh NetBird. L'IP home est
+# ajoutee dans host_vars du VPS (specifique a chaque deployeur).
+crowdsec_whitelist_ips:
+  - "100.64.0.0/10"    # Mesh NetBird (CGNAT)
+  - "172.16.0.0/12"    # Docker bridges
+  - "10.0.0.0/8"       # Ranges prives
+  - "192.168.0.0/16"
+  - "127.0.0.0/8"      # Loopback
+
+# --- Console enrollment (OPTIONNEL) ---
+# false par defaut : l'engine marche parfaitement sans compte.
+# Activer uniquement si tu veux le dashboard web sur app.crowdsec.net.
+# Si true, renseigner vault_crowdsec_enrollment_key dans host_vars/<host>/vault.yml.
+crowdsec_console_enrollment_enabled: false
+
+# --- Sources de logs ---
+# Chemin du fichier auth.log sur l'hote (source syslog pour scenario sshd).
+crowdsec_ssh_auth_log: "/var/log/auth.log"
+
+# --- Volume Traefik logs ---
+# Cree par le role traefik quand traefik_enable_crowdsec: true.
+# Nom Docker volume : traefik-<mode>-logs (cf. roles/traefik/templates/docker-compose.yml.j2).
+crowdsec_traefik_logs_volume: "traefik-edge-logs"
+
+# =========================================================================
+# Bouncer nftables (Phase 2 — protection active)
+# =========================================================================
+# Agent installe sur l'host (pas container) qui poll l'Engine via LAPI et
+# ajoute les IPs bannies dans une table nftables dediee. Le bouncer vit sur
+# l'host car il doit modifier des regles kernel, ce qui est impossible
+# proprement depuis un container isole.
+
+# --- Installation ---
+# NE PAS utiliser le paquet Debian 13 "crowdsec-firewall-bouncer" (0.0.25-5+b11) :
+# il est compile sans version (le binaire renvoie `version: -`), ce qui fait que
+# son User-Agent `crowdsec-firewall-bouncer/-` est rejete en 403 par la LAPI
+# (validation anti-abus sur le format `<name>/<version>`).
+# On passe par le repo officiel CrowdSec (packagecloud) qui livre des paquets
+# mode-specifiques (`-nftables`, `-iptables`) avec version propre.
+crowdsec_bouncer_package: "crowdsec-firewall-bouncer-nftables"
+
+# Repo apt CrowdSec (packagecloud).
+crowdsec_apt_repo_key_url: "https://packagecloud.io/crowdsec/crowdsec/gpgkey"
+crowdsec_apt_repo_keyring: "/usr/share/keyrings/crowdsec-archive-keyring.gpg"
+crowdsec_apt_repo_line: "deb [signed-by=/usr/share/keyrings/crowdsec-archive-keyring.gpg] https://packagecloud.io/crowdsec/crowdsec/any/ any main"
+
+# --- Identite ---
+# Nom affiche dans `cscli bouncers list`.
+crowdsec_bouncer_name: "nftables-vps"
+
+# API key d'auth Engine <-> Bouncer.
+# Generee sur le laptop avec `openssl rand -hex 32`, stockee en vault.
+# Le fail explicite dans bouncer.yml empeche un deploy sans secret.
+crowdsec_bouncer_api_key: "{{ vault_crowdsec_bouncer_api_key | default('') }}"
+
+# --- Connexion a l'Engine ---
+# L'Engine ecoute sur 127.0.0.1:8080 (loopback host uniquement). Le bouncer
+# tourne sur le meme host, communication via loopback.
+crowdsec_bouncer_api_url: "http://127.0.0.1:8080/"
+
+# Poll interval des decisions. 10s = reactif, charge negligeable.
+crowdsec_bouncer_update_frequency: "10s"
+
+# --- Action sur ban ---
+# DROP = paquet jete silencieusement (timeout cote attaquant, dissuasif).
+# REJECT = TCP RST immediat (plus propre mais informatif sur l'existence d'un firewall).
+crowdsec_bouncer_deny_action: "DROP"
+# Pas de log kernel pour chaque paquet droppe (bruit inutile dans dmesg).
+crowdsec_bouncer_deny_log: false
+
+# --- Mode nftables ---
+crowdsec_bouncer_mode: "nftables"
+
+# VPS Hostinger sans IPv6 publique -> pas de table v6 fantome.
+crowdsec_bouncer_disable_ipv6: true
+
+# --- Nommage nftables ---
+# Table separee de `inet filter` (role base, priority 0). Le bouncer s'execute
+# AVANT grace a priority -10 (dans nftables, lower priority = executed first).
+crowdsec_bouncer_nft_table_v4: "crowdsec"
+crowdsec_bouncer_nft_chain_v4: "crowdsec-chain"
+crowdsec_bouncer_nft_priority: -10
+
+# Hooks : input pour trafic host, forward pour containers (Traefik -> backend).
+crowdsec_bouncer_nft_hooks:
+  - input
+  - forward
+
+# --- Check de version (optionnel) ---
+# Laisser vide pour desactiver le check. Pour activer, remplir avec la version
+# exacte attendue (ex: "0.0.34-1"). Le check est delegue a
+# roles/_shared/tasks/check_host_package_version.yml.
+crowdsec_bouncer_expected_version: ""
+# strict=true : fail si version differe. strict=false : warning visible.
+crowdsec_bouncer_strict_version: false

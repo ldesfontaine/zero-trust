@@ -1,0 +1,202 @@
+# ============================================================
+# CrowdSec Engine — container Docker (detection uniquement)
+#
+# Phase 1 : l'Engine lit les logs (SSH + Traefik), detecte les
+# attaques, ecrit des "decisions" dans sa DB SQLite, expose la
+# LAPI sur 127.0.0.1:8080. Ne BLOQUE RIEN.
+#
+# Le blocage effectif vient du bouncer nftables (Phase 2 — paquet
+# .deb host-level, configure via tasks/bouncer.yml).
+# ============================================================
+
+# --- Prerequis ---
+# Le volume Docker traefik-<mode>-logs doit exister (cree par
+# le role traefik quand traefik_enable_crowdsec: true).
+- name: "CrowdSec — Verifier l'existence du volume {{ crowdsec_traefik_logs_volume }}"
+  ansible.builtin.command:
+    cmd: "docker volume inspect {{ crowdsec_traefik_logs_volume }}"
+  register: crowdsec_traefik_vol_check
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: "CrowdSec — Echec si le volume Traefik logs n'existe pas"
+  ansible.builtin.fail:
+    msg: >-
+      Le volume Docker "{{ crowdsec_traefik_logs_volume }}" n'existe pas.
+      Il est cree par le role traefik quand traefik_enable_crowdsec: true.
+      Verifier que :
+        1. traefik_enable_crowdsec: true dans host_vars/{{ inventory_hostname }}/main.yml
+        2. Le role traefik a tourne AVANT crowdsec dans le play
+  # Skip le fail en --check : Traefik n'a pas reellement applique son compose
+  # en dry-run, donc le volume est legitimement absent. Le check reel se fera
+  # au premier deploy.
+  when:
+    - not ansible_check_mode
+    - crowdsec_traefik_vol_check.rc != 0
+
+# --- Repertoires (bind mount) ---
+# Parent en root:root 0755. Sous-dossiers en 0700 (config sensible).
+- name: "CrowdSec — Creer le repertoire parent du module"
+  ansible.builtin.file:
+    path: "{{ crowdsec_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "CrowdSec — Creer les sous-dossiers"
+  ansible.builtin.file:
+    path: "{{ crowdsec_data_dir }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - config
+    - data
+
+# --- Config custom (bind mount fichiers) ---
+# On ne bind mount PAS le dossier /etc/crowdsec complet pour laisser
+# l'entrypoint de l'image installer les collections par defaut au boot.
+# Seuls les 3 fichiers custom sont montes en override.
+- name: "CrowdSec — Templater acquis.yaml (sources de logs)"
+  ansible.builtin.template:
+    src: engine/acquis.yaml.j2
+    dest: "{{ crowdsec_data_dir }}/config/acquis.yaml"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Redemarrer crowdsec
+
+- name: "CrowdSec — Templater profiles.yaml (politique de remediation)"
+  ansible.builtin.template:
+    src: engine/profiles.yaml.j2
+    dest: "{{ crowdsec_data_dir }}/config/profiles.yaml"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Redemarrer crowdsec
+
+- name: "CrowdSec — Templater la whitelist (anti auto-ban)"
+  ansible.builtin.template:
+    src: engine/whitelists.yaml.j2
+    dest: "{{ crowdsec_data_dir }}/config/home-whitelists.yaml"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Redemarrer crowdsec
+
+# Parser local : OpenSSH 9.8+ logue sous le nom "sshd-session", le parser
+# upstream crowdsecurity/sshd-logs filtre sur "sshd". Sans ce rename, 0%
+# des evenements SSH sont parses sur Debian/Ubuntu recents.
+- name: "CrowdSec — Templater l'alias sshd-session (compat OpenSSH 9.8+)"
+  ansible.builtin.template:
+    src: engine/sshd-session-alias.yaml.j2
+    dest: "{{ crowdsec_data_dir }}/config/sshd-session-alias.yaml"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Redemarrer crowdsec
+
+# --- Reseau Docker (drift check) ---
+- name: "CrowdSec — Verifier le drift reseau"
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../roles/_shared/tasks/check_network_drift.yml"
+  vars:
+    network_name: "{{ crowdsec_network_name }}"
+    network_internal: false
+
+# --- Compose ---
+- name: "CrowdSec — Deployer le docker-compose"
+  ansible.builtin.template:
+    src: engine/docker-compose.yml.j2
+    dest: "{{ crowdsec_data_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Redemarrer crowdsec
+
+# Forcer l'application des changements de config avant la suite.
+# Sinon le handler restart s'execute en fin de play et peut rater
+# le console enroll conditionnel ci-dessous.
+- name: "CrowdSec — Appliquer les changements de config en attente"
+  ansible.builtin.meta: flush_handlers
+
+- name: "CrowdSec — Lancer le container"
+  community.docker.docker_compose_v2:
+    project_src: "{{ crowdsec_data_dir }}"
+    state: present
+  # Skip en --check : le module exige project_src existant (dossier cree
+  # virtuellement en dry-run). Bug structurel docker_compose_v2 + check_mode
+  # pour un premier deploy. En deploy reel, cette task cree le container.
+  when: not ansible_check_mode
+
+# --- Attendre que la LAPI reponde ---
+# Necessaire pour les actions cscli suivantes (enroll, bouncers add en Phase 2).
+# On utilise `cscli lapi status` (meme commande que le healthcheck Docker du
+# container) : CrowdSec 1.7.x n'expose PAS d'endpoint HTTP /health, seuls les
+# endpoints /v1/* existent et exigent auth. Un GET sur /health reste ouvert
+# sans reponse -> timeout systematique.
+# Skip en --check : le container n'est pas reellement lance en dry-run.
+- name: "CrowdSec — Attendre que la LAPI soit prete"
+  ansible.builtin.command:
+    cmd: docker exec crowdsec cscli lapi status
+  register: crowdsec_lapi_health
+  retries: 30
+  delay: 2
+  until: crowdsec_lapi_health.rc == 0
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+# --- Hub update + upgrade ---
+# Le hub (collections, parsers, scenarios) vit dans le volume bind-mount de
+# l'Engine. Au wipe VPS, on repart de ce que l'image Docker embarque (potentiel-
+# lement plus ancien). Forcer update + upgrade a chaque run garantit que les
+# parsers restent a jour (ex: crowdsecurity/sshd-logs v3.1 pour OpenSSH 9.8+).
+# Risque accepte : un upgrade peut casser un parser — on verra dans la review
+# post-deploy + `cscli alerts list`. Downgrade possible via `cscli X install --force v<X>`.
+- name: "CrowdSec — Mettre a jour l'index du hub"
+  ansible.builtin.command:
+    cmd: docker exec crowdsec cscli hub update
+  register: crowdsec_hub_update
+  changed_when: false  # fetch d'index, pas un changement d'etat installe
+  when: not ansible_check_mode
+
+- name: "CrowdSec — Upgrader collections/parsers/scenarios installes"
+  ansible.builtin.command:
+    cmd: docker exec crowdsec cscli hub upgrade
+  register: crowdsec_hub_upgrade
+  # cscli imprime "X → Y" uniquement quand une version est upgradee, sinon
+  # "up-to-date" par item. L'arrow unicode est le marqueur le plus fiable.
+  changed_when: "'→' in crowdsec_hub_upgrade.stdout"
+  when: not ansible_check_mode
+  notify: Redemarrer crowdsec
+
+# --- Enrollment Console (optionnel, idempotent) ---
+- name: "CrowdSec — Verifier le statut d'enrollment Console"
+  ansible.builtin.command:
+    cmd: docker exec crowdsec cscli console status -o json
+  register: crowdsec_console_status
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: crowdsec_console_enrollment_enabled
+
+- name: "CrowdSec — Enroller l'instance sur app.crowdsec.net"
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - crowdsec
+      - cscli
+      - console
+      - enroll
+      - "{{ vault_crowdsec_enrollment_key }}"
+  register: crowdsec_enroll
+  changed_when: crowdsec_enroll.rc == 0
+  when:
+    - crowdsec_console_enrollment_enabled
+    - "'enrolled' not in (crowdsec_console_status.stdout | default(''))"
+  no_log: true
+  notify: Redemarrer crowdsec

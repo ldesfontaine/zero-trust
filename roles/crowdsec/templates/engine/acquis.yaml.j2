@@ -1,0 +1,23 @@
+# {{ ansible_managed }}
+# CrowdSec — Sources de logs a parser
+# Documentation : https://doc.crowdsec.net/docs/data_sources/file
+
+# --- SSH / auth.log ---
+# Le type "syslog" est parse par crowdsecurity/sshd pour detecter les
+# brute-force SSH (multiple failed auth).
+---
+source: file
+filenames:
+  - /var/log/auth.log
+labels:
+  type: syslog
+
+# --- Traefik access logs ---
+# Le type "traefik" est parse par crowdsecurity/traefik. Le format JSON
+# est plus fiable que le format CLF par defaut (cf. traefik.yml.j2).
+---
+source: file
+filenames:
+  - /var/log/traefik/access.log
+labels:
+  type: traefik

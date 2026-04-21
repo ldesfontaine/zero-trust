@@ -1,0 +1,57 @@
+# {{ ansible_managed }}
+# CrowdSec Firewall Bouncer — mode nftables
+# Applique les decisions de l'Engine au niveau kernel (table dediee).
+
+mode: {{ crowdsec_bouncer_mode }}
+
+# --- Logs ---
+# Rotation geree par le bouncer lui-meme, pas de logrotate externe.
+log_mode: file
+log_dir: /var/log/
+log_level: info
+log_compression: true
+log_max_size: 40        # MB par fichier avant rotation
+log_max_backups: 3      # Nb d'archives gardees
+log_max_age: 30         # Jours de retention
+log_format: text
+
+# --- Connexion a la LAPI ---
+api_url: "{{ crowdsec_bouncer_api_url }}"
+api_key: "{{ crowdsec_bouncer_api_key }}"
+insecure_skip_verify: false
+disable_ipv6: {{ crowdsec_bouncer_disable_ipv6 | ternary('true', 'false') }}
+
+# --- Comportement ---
+update_frequency: {{ crowdsec_bouncer_update_frequency }}
+deny_action: {{ crowdsec_bouncer_deny_action }}
+deny_log: {{ crowdsec_bouncer_deny_log | ternary('true', 'false') }}
+
+# --- Configuration nftables ---
+# set-only: false => le bouncer cree table + chain + set lui-meme au demarrage.
+# Les IPs bannies sont ajoutees au set `crowdsec-blacklists0`, qui est match
+# dans la chain pour DROP le trafic avant qu'il atteigne la table inet filter.
+nftables:
+  ipv4:
+    enabled: true
+    set-only: false
+    table: {{ crowdsec_bouncer_nft_table_v4 }}
+    chain: {{ crowdsec_bouncer_nft_chain_v4 }}
+    priority: {{ crowdsec_bouncer_nft_priority }}
+    hooks:
+{% for hook in crowdsec_bouncer_nft_hooks %}
+      - {{ hook }}
+{% endfor %}
+  ipv6:
+{% if crowdsec_bouncer_disable_ipv6 %}
+    enabled: false
+{% else %}
+    enabled: true
+    set-only: false
+    table: "crowdsec6"
+    chain: "crowdsec6-chain"
+    priority: {{ crowdsec_bouncer_nft_priority }}
+    hooks:
+{% for hook in crowdsec_bouncer_nft_hooks %}
+      - {{ hook }}
+{% endfor %}
+{% endif %}

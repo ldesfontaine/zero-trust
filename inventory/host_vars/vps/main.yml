@@ -15,16 +15,38 @@ base_nftables_output_allow:
   - { dest: "1.1.1.1", port: 53, proto: "udp", comment: "DNS Cloudflare" }
   - { dest: "0.0.0.0/0", port: 443, proto: "tcp", comment: "HTTPS (GHCR, Let's Encrypt)" }
   - { dest: "0.0.0.0/0", port: 80, proto: "tcp", comment: "HTTP (Let's Encrypt challenge)" }
+# Necessaire pour crowdsec-firewall-bouncer (host) -> LAPI (container crowdsec)
+base_nftables_output_docker_bridges: true
 
 # --- Traefik (mode edge) ---
 # Mode TLS auto-detecte par le role : token Cloudflare present → DNS-01 + wildcard
 traefik_mode: "edge"
 traefik_listen_address: "0.0.0.0"
 traefik_tls_email: "{{ vault_admin_email }}"
-traefik_enable_waf: false       # A reactiver quand le plugin Coraza sera configure
-traefik_enable_crowdsec: false   # A reactiver quand le role CrowdSec existera
+traefik_enable_waf: false        # A reactiver quand le plugin Coraza sera configure
+traefik_enable_crowdsec: true    # accessLog JSON + volume traefik-edge-logs (partage avec crowdsec)
 
 # Reseaux hors machine_services que Traefik doit rejoindre
 # (services deployes via machine_mesh notamment).
 traefik_extra_networks:
   - netbird-server-net
+
+# --- CrowdSec (detection + blocage) ---
+# Phase 1 : engine seul (detection, pas de blocage).
+# Phase 2 : bouncer actif -> blocage effectif via nftables.
+machine_crowdsec:
+  engine: true
+  bouncer: true
+
+# Whitelist surchargee (remplace les defaults du role).
+# Inclut l'IP home du deployeur + ranges prives + mesh NetBird.
+# IPv6 : whitelister le /64 — la partie host change toutes les 24h
+# (SLAAC + privacy extensions), whitelister l'adresse precise est inutile.
+crowdsec_whitelist_ips:
+  - "86.194.228.11"               # IPv4 home (Bouygues)
+  - "2a01:cb14:68c:c800::/64"     # IPv6 /64 home
+  - "100.64.0.0/10"               # Mesh NetBird (CGNAT)
+  - "172.16.0.0/12"               # Docker bridges
+  - "10.0.0.0/8"
+  - "192.168.0.0/16"
+  - "127.0.0.0/8"

@@ -1,0 +1,323 @@
+# ============================================================
+# CrowdSec Bouncer — paquet apt sur l'host (Phase 2)
+#
+# Le bouncer poll la LAPI de l'Engine, recupere les decisions
+# de ban et les applique dans une table nftables dediee
+# (inet crowdsec, priority -10 -> s'execute avant `inet filter`).
+#
+# Ordre :
+#   1. Prerequis : API key presente, Engine UP, LAPI reactive
+#   2. Install du paquet apt
+#   3. Check version (optionnel)
+#   4. Enregistrer le bouncer cote Engine (idempotent)
+#   5. Templater la config (contient l'API key -> no_log + 0600)
+#   6. Activer le service systemd
+#   7. Validation post-deploy (bouncer visible, last_pull present)
+# ============================================================
+
+# --- Etape 1 : Prerequis ---
+
+- name: "CrowdSec Bouncer — Valider que l'API key est dans le vault"
+  ansible.builtin.fail:
+    msg: >-
+      vault_crowdsec_bouncer_api_key doit etre defini dans
+      inventory/host_vars/{{ inventory_hostname }}/vault.yml.
+      Generer : openssl rand -hex 32
+      Editer  : ansible-vault edit inventory/host_vars/{{ inventory_hostname }}/vault.yml
+  when: crowdsec_bouncer_api_key | length == 0
+
+- name: "CrowdSec Bouncer — Verifier que l'Engine tourne"
+  ansible.builtin.command:
+    cmd: docker ps --filter name=^crowdsec$ --format '{% raw %}{{.Status}}{% endraw %}'
+  register: crowdsec_engine_status
+  changed_when: false
+  check_mode: false
+
+- name: "CrowdSec Bouncer — Fail si l'Engine n'est pas UP"
+  ansible.builtin.fail:
+    msg: >-
+      Le container CrowdSec Engine n'est pas actif. Deployer d'abord
+      engine.yml (machine_crowdsec.engine: true).
+  when:
+    - not ansible_check_mode
+    - crowdsec_engine_status.stdout is not search('Up')
+
+- name: "CrowdSec Bouncer — Verifier que la LAPI repond"
+  ansible.builtin.command:
+    cmd: docker exec crowdsec cscli lapi status
+  register: crowdsec_lapi_status
+  changed_when: false
+  check_mode: false
+  failed_when:
+    - not ansible_check_mode
+    - crowdsec_lapi_status.rc != 0
+
+# --- Etape 2 : Repo apt CrowdSec + installation ---
+
+- name: "CrowdSec Bouncer — Assurer gnupg + ca-certificates"
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - gnupg
+    state: present
+
+- name: "CrowdSec Bouncer — Telecharger la cle GPG du repo CrowdSec"
+  ansible.builtin.get_url:
+    url: "{{ crowdsec_apt_repo_key_url }}"
+    dest: /tmp/crowdsec-gpgkey.asc
+    mode: "0644"
+    force: false
+  register: crowdsec_gpgkey_fetched
+
+- name: "CrowdSec Bouncer — Installer la cle dans {{ crowdsec_apt_repo_keyring }}"
+  ansible.builtin.command:
+    cmd: "gpg --dearmor --yes -o {{ crowdsec_apt_repo_keyring }} /tmp/crowdsec-gpgkey.asc"
+    creates: "{{ crowdsec_apt_repo_keyring }}"
+
+- name: "CrowdSec Bouncer — Ajouter le repo apt CrowdSec"
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/crowdsec.list
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ crowdsec_apt_repo_line }}\n"
+  register: crowdsec_apt_repo_added
+
+- name: "CrowdSec Bouncer — Rafraichir le cache apt apres ajout du repo"
+  ansible.builtin.apt:
+    update_cache: true
+  when: crowdsec_apt_repo_added is changed
+
+# Le paquet Debian generique "crowdsec-firewall-bouncer" a un version vide et
+# un User-Agent rejete en 403 par la LAPI. Le desinstaller avant d'installer
+# la variante mode-specifique depuis le repo CrowdSec.
+- name: "CrowdSec Bouncer — Desinstaller le paquet Debian generique (version cassee)"
+  ansible.builtin.apt:
+    name: crowdsec-firewall-bouncer
+    state: absent
+
+# Supprimer AVANT apt install : le postinst du paquet crowdsec-firewall-bouncer-*
+# execute `systemctl start` qui charge la config MERGED (.yaml + .yaml.local).
+# Si .local contient un api_key auto-genere ou stale, le service echoue en 403,
+# le postinst exit 1 et apt install plante. On blanchit la config avant install.
+- name: "CrowdSec Bouncer — Supprimer l'override .local avant apt install"
+  ansible.builtin.file:
+    path: /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml.local
+    state: absent
+
+- name: "CrowdSec Bouncer — Installer le paquet depuis le repo CrowdSec"
+  ansible.builtin.apt:
+    name: "{{ crowdsec_bouncer_package }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  register: crowdsec_bouncer_apt_install
+
+# --- Etape 3 : Check de version (optionnel) ---
+
+- name: "CrowdSec Bouncer — Check de version (optionnel)"
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../roles/_shared/tasks/check_host_package_version.yml"
+  vars:
+    package_name: "{{ crowdsec_bouncer_package }}"
+    package_expected: "{{ crowdsec_bouncer_expected_version }}"
+    package_strict: "{{ crowdsec_bouncer_strict_version }}"
+  when: crowdsec_bouncer_expected_version | length > 0
+
+# --- Etape 4 : Enregistrement aupres de l'Engine (idempotent) ---
+
+- name: "CrowdSec Bouncer — Lister les bouncers enregistres"
+  ansible.builtin.command:
+    cmd: docker exec crowdsec cscli bouncers list -o json
+  register: crowdsec_bouncers_list
+  changed_when: false
+  check_mode: false
+
+- name: "CrowdSec Bouncer — Detecter si deja enregistre"
+  ansible.builtin.set_fact:
+    crowdsec_bouncer_already_registered: >-
+      {{
+        (crowdsec_bouncers_list.stdout | default('[]') | from_json)
+        | selectattr('name', 'equalto', crowdsec_bouncer_name)
+        | list | length > 0
+      }}
+
+# Si deja enregistre, verifier que la cle du vault matche celle stockee cote
+# Engine en interrogeant la LAPI. 401/403 = mismatch -> on delete le bouncer
+# et on re-enregistre avec la cle actuelle (cas typique apres rotation du
+# vault sans delete manuel).
+- name: "CrowdSec Bouncer — Tester la validite de l'API key aupres de la LAPI"
+  ansible.builtin.command:
+    argv:
+      - curl
+      - -s
+      - -o
+      - /dev/null
+      - -w
+      - "%{http_code}"
+      - -m
+      - "5"
+      - -H
+      - "X-Api-Key: {{ crowdsec_bouncer_api_key }}"
+      - "http://127.0.0.1:8080/v1/decisions/stream?startup=true"
+  register: crowdsec_bouncer_key_test
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+  when: crowdsec_bouncer_already_registered
+
+- name: "CrowdSec Bouncer — Supprimer le bouncer en cas de mismatch vault/Engine"
+  ansible.builtin.command:
+    cmd: "docker exec crowdsec cscli bouncers delete {{ crowdsec_bouncer_name }}"
+  register: crowdsec_bouncer_deleted
+  when:
+    - crowdsec_bouncer_already_registered
+    - crowdsec_bouncer_key_test.stdout is defined
+    - crowdsec_bouncer_key_test.stdout | trim in ['401', '403']
+
+- name: "CrowdSec Bouncer — Marquer comme non-enregistre apres suppression"
+  ansible.builtin.set_fact:
+    crowdsec_bouncer_already_registered: false
+  when:
+    - crowdsec_bouncer_deleted is defined
+    - crowdsec_bouncer_deleted is changed
+
+# argv: pour passer l'API key sans shell-expansion. Pas de shell, pas de risque
+# d'injection. no_log pour ne pas reveler la key dans la sortie Ansible.
+- name: "CrowdSec Bouncer — Enregistrer aupres de l'Engine (si absent)"
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - crowdsec
+      - cscli
+      - bouncers
+      - add
+      - "{{ crowdsec_bouncer_name }}"
+      - --key
+      - "{{ crowdsec_bouncer_api_key }}"
+  register: crowdsec_bouncer_register
+  changed_when: crowdsec_bouncer_register.rc == 0
+  when: not crowdsec_bouncer_already_registered
+  no_log: true
+
+# --- Etape 5 : Config ---
+
+# Le paquet CrowdSec cree un fichier .local avec un api_key auto-genere (postinst)
+# qui override la config principale au runtime (convention CrowdSec : <file>.yaml
+# charge puis <file>.yaml.local fusionne par-dessus). Sans suppression, le bouncer
+# utilise cette cle auto-generee au lieu de celle du vault -> 403 systematique.
+# Supprimer AVANT templater (pas apres, sinon notify handler restart avec mauvaise cle).
+- name: "CrowdSec Bouncer — Supprimer l'override .local (auto-genere par le paquet)"
+  ansible.builtin.file:
+    path: /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml.local
+    state: absent
+  notify: "Redemarrer crowdsec-firewall-bouncer"
+
+# no_log : le template rend l'API key en clair. 0600 sur le fichier cible.
+# Diff masque par no_log (acceptable : verifier `sudo cat` sur le host en
+# cas de doute au premier deploy).
+- name: "CrowdSec Bouncer — Templater la config du bouncer"
+  ansible.builtin.template:
+    src: "bouncer/crowdsec-firewall-bouncer.yaml.j2"
+    dest: "/etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: "Redemarrer crowdsec-firewall-bouncer"
+
+# Le paquet Debian cree /var/lib/crowdsec/pending-registration a l'install
+# et l'unit systemd a une ConditionPathExists=!/var/lib/crowdsec/pending-registration
+# -> le service refuse de demarrer tant que ce flag existe. Il est normalement
+# supprime par le script post-install interactif du paquet, mais on bypass ce
+# script en faisant `cscli bouncers add` nous-memes. On supprime donc le flag
+# manuellement apres l'enregistrement.
+- name: "CrowdSec Bouncer — Supprimer le flag pending-registration"
+  ansible.builtin.file:
+    path: /var/lib/crowdsec/pending-registration
+    state: absent
+
+# --- Etape 6 : Service systemd ---
+
+- name: "CrowdSec Bouncer — Activer et demarrer le service"
+  ansible.builtin.systemd:
+    name: crowdsec-firewall-bouncer
+    state: started
+    enabled: true
+    daemon_reload: true
+
+# --- Etape 7 : Validation post-deploy ---
+
+# Flush pour que le restart ait lieu AVANT les checks de validation :
+# un pull de decisions frais reflete la config qu'on vient d'ecrire.
+- name: "CrowdSec Bouncer — Flush handlers avant validation"
+  ansible.builtin.meta: flush_handlers
+
+# Pause le temps que le bouncer pull la premiere salve de decisions.
+# Uniquement sur un premier install ou une re-registration (evite de
+# ralentir les runs idempotents).
+- name: "CrowdSec Bouncer — Attendre le premier pull de decisions"
+  ansible.builtin.pause:
+    seconds: 15
+  when:
+    - not ansible_check_mode
+    - crowdsec_bouncer_apt_install.changed or not crowdsec_bouncer_already_registered
+
+- name: "CrowdSec Bouncer — Re-lister les bouncers pour validation"
+  ansible.builtin.command:
+    cmd: docker exec crowdsec cscli bouncers list -o json
+  register: crowdsec_bouncers_validation
+  changed_when: false
+  check_mode: false
+
+- name: "CrowdSec Bouncer — Extraire le statut du bouncer"
+  ansible.builtin.set_fact:
+    crowdsec_bouncer_info: >-
+      {{
+        (crowdsec_bouncers_validation.stdout | default('[]') | from_json)
+        | selectattr('name', 'equalto', crowdsec_bouncer_name)
+        | list | first | default({})
+      }}
+
+# cscli retourne `last_pull: ""` (chaine vide) quand le bouncer n'a jamais
+# contacte l'Engine — PAS `undefined`. Tester `is not defined` rate le cas,
+# donc on verifie aussi `| length == 0`.
+- name: "CrowdSec Bouncer — Normaliser last_pull"
+  ansible.builtin.set_fact:
+    crowdsec_bouncer_has_pulled: >-
+      {{
+        crowdsec_bouncer_info.last_pull is defined
+        and (crowdsec_bouncer_info.last_pull | default('') | length > 0)
+      }}
+
+- name: "CrowdSec Bouncer — Afficher le statut"
+  ansible.builtin.debug:
+    msg:
+      - "Bouncer     : {{ crowdsec_bouncer_info.name | default('ABSENT') }}"
+      - "Statut      : {{ 'VALID' if crowdsec_bouncer_has_pulled else 'NO PULL YET' }}"
+      - "Last pull   : {{ crowdsec_bouncer_info.last_pull | default('jamais') }}"
+
+# Fail explicite au lieu d'un simple warning : si le bouncer est enregistre
+# mais n'a jamais pull, le service est cassé (probablement le flag
+# /var/lib/crowdsec/pending-registration bloquant systemd). On veut que le
+# deploy echoue ici, pas qu'on croie a une reussite silencieuse.
+- name: "CrowdSec Bouncer — Fail si aucun pull (service non demarre)"
+  ansible.builtin.fail:
+    msg: |
+      Le bouncer est enregistre cote Engine mais n'a JAMAIS pull de decisions.
+      Le service systemd ne tourne probablement pas correctement.
+
+      Diagnostic :
+        sudo systemctl status crowdsec-firewall-bouncer
+        sudo journalctl -u crowdsec-firewall-bouncer --since "5 min ago"
+
+      Cause frequente : flag /var/lib/crowdsec/pending-registration encore present
+      (empeche systemd de demarrer via ConditionPathExists).
+      Fix manuel :
+        sudo rm /var/lib/crowdsec/pending-registration
+        sudo systemctl start crowdsec-firewall-bouncer
+  when:
+    - not ansible_check_mode
+    - crowdsec_bouncer_info.name is defined
+    - not crowdsec_bouncer_has_pulled

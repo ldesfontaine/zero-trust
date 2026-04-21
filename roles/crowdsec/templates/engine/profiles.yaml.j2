@@ -1,0 +1,15 @@
+# {{ ansible_managed }}
+# CrowdSec — Politique de remediation
+# Documentation : https://doc.crowdsec.net/docs/profiles/intro
+#
+# Profil par defaut : toute alerte avec remediation=true sur un scope IP
+# declenche un ban de 4h. Le bouncer (Phase 2) applique ce ban via nftables.
+
+name: default_ip_remediation
+filters:
+  - Alert.Remediation == true && Alert.GetScope() == "Ip"
+decisions:
+  - type: ban
+    duration: 4h
+# Stop la pipeline de profils apres ce match (pas d'autres decisions cumulees).
+on_success: break

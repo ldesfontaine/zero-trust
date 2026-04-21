@@ -1,0 +1,35 @@
+# {{ ansible_managed }}
+# Parser local : duplicate de crowdsecurity/sshd-success-logs avec filtre
+# etendu a "sshd-session" pour compat OpenSSH 9.8+.
+#
+# Depuis OpenSSH 9.8 (juin 2024), les events "Accepted publickey/password"
+# sont logues par le process "sshd-session" (privilege separation renforcee).
+# Le parser upstream crowdsecurity/sshd-success-logs v0.1 filtre encore
+# sur program == "sshd" uniquement -> 0 login reussi parse sur Debian 13+.
+#
+# Ce parser est un clone exact avec le filtre etendu. A retirer des que
+# le hub crowdsec met a jour sshd-success-logs.
+#
+# Chemin cible dans le container :
+#   /etc/crowdsec/parsers/s01-parse/home-sshd-success-session.yaml
+
+onsuccess: next_stage
+filter: "evt.Parsed.program == 'sshd-session'"
+name: home/sshd-success-session
+description: "Parse successful ssh logins from sshd-session (OpenSSH 9.8+)"
+pattern_syntax:
+  IPv4_WORKAROUND: (?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)
+  IP_WORKAROUND: (?:%{IPV6}|%{IPv4_WORKAROUND})
+nodes:
+  - grok:
+      pattern: "Accepted (publickey|password) for %{USERNAME:sshd_auth_user} from %{IP_WORKAROUND:sshd_client_ip} port %{NUMBER:sshd_client_port} ssh2%{GREEDYDATA:sshd_trail}"
+      apply_on: message
+statics:
+  - meta: service
+    value: ssh
+  - meta: source_ip
+    expression: "evt.Parsed.sshd_client_ip"
+  - meta: user
+    expression: "evt.Parsed.sshd_auth_user"
+  - meta: log_type
+    value: auth_success

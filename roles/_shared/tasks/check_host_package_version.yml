@@ -1,0 +1,59 @@
+# ============================================================
+# Check de version d'un paquet apt installe sur l'host.
+#
+# Variables attendues (passees via include_tasks vars) :
+#   package_name     : nom du paquet apt (ex: crowdsec-firewall-bouncer)
+#   package_expected : version attendue (ex: 0.0.34-1)
+#   package_strict   : true = fail, false = warning only
+#
+# Comportement :
+#   - package_expected vide      -> skip (appelant gere le when)
+#   - version installee == attendue -> silence
+#   - mismatch + strict=true     -> fail explicite
+#   - mismatch + strict=false    -> debug warning visible
+# ============================================================
+
+- name: "Package version check — Recuperer la version installee de {{ package_name }}"
+  ansible.builtin.command:
+    cmd: "dpkg-query -W -f='${Version}' {{ package_name }}"
+  register: _package_installed_version
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: "Package version check — Fail si paquet non installe"
+  ansible.builtin.fail:
+    msg: >-
+      Le paquet {{ package_name }} n'est pas installe sur l'host.
+      L'install doit avoir lieu AVANT ce check.
+  when: _package_installed_version.rc != 0
+
+- name: "Package version check — Comparer installee vs attendue"
+  ansible.builtin.set_fact:
+    _package_version_mismatch: "{{ _package_installed_version.stdout != package_expected }}"
+
+- name: "Package version check — FAIL si mismatch en mode strict"
+  ansible.builtin.fail:
+    msg: |
+      Version du paquet {{ package_name }} differente de l'attendue.
+      Installee : {{ _package_installed_version.stdout }}
+      Attendue  : {{ package_expected }}
+
+      Pour debloquer :
+        1. Accepter la version actuelle : mettre a jour *_expected_version du role
+        2. Forcer la version attendue  : sudo apt install --only-upgrade {{ package_name }}={{ package_expected }}
+        3. Desactiver le check strict   : *_strict_version: false
+  when:
+    - _package_version_mismatch
+    - package_strict | default(false)
+
+- name: "Package version check — WARNING si mismatch en mode non-strict"
+  ansible.builtin.debug:
+    msg: |
+      ATTENTION : version de {{ package_name }} != attendue
+      Installee : {{ _package_installed_version.stdout }}
+      Attendue  : {{ package_expected }}
+      (check non-strict : pas de blocage, verifier la compatibilite avant upgrade)
+  when:
+    - _package_version_mismatch
+    - not (package_strict | default(false))

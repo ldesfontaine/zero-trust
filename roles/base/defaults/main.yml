@@ -15,6 +15,11 @@ base_packages:
   - jq
   - unattended-upgrades
   - nftables
+  # Debian 13+ ne livre plus rsyslog par defaut (journald seul).
+  # Installe pour generer /var/log/auth.log (consomme par CrowdSec
+  # via le parser crowdsecurity/sshd). Sans ca, l'engine taile un
+  # fichier absent et ne detecte aucune tentative SSH.
+  - rsyslog
 
 # --- Firewall (nftables) ---
 # Regles output supplementaires, surchargees dans host_vars par machine

@@ -1,0 +1,25 @@
+# {{ ansible_managed }}
+# CrowdSec — Whitelist maison
+# Chemin dans le container : /etc/crowdsec/parsers/s02-enrich/home-whitelists.yaml
+# Les IPs et CIDR listes ici ne declencheront JAMAIS d'alerte ni de decision.
+#
+# Categories couvertes :
+#   - IPs publiques du deployeur (defini dans host_vars/<host>/main.yml)
+#   - Mesh NetBird (CGNAT 100.64/10)
+#   - Ranges prives (Docker, LAN, loopback)
+#
+# Attention : les IPv6 home changent (privacy extensions) — whitelister le /64,
+# pas l'adresse precise.
+
+name: crowdsecurity/home-whitelists
+description: "Whitelist IPs trusted — home + mesh + private ranges"
+whitelist:
+  reason: "trusted networks (home, mesh, private)"
+  ip:
+{% for entry in crowdsec_whitelist_ips if '/' not in entry %}
+    - "{{ entry }}"
+{% endfor %}
+  cidr:
+{% for entry in crowdsec_whitelist_ips if '/' in entry %}
+    - "{{ entry }}"
+{% endfor %}

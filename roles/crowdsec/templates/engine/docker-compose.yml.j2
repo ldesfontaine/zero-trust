@@ -1,0 +1,73 @@
+# {{ ansible_managed }}
+# CrowdSec Engine — detection-only (Phase 1)
+#
+# Lit /var/log/auth.log (SSH) et /var/log/traefik/access.log (Traefik)
+# en read-only. Expose la LAPI sur 127.0.0.1:8080 pour le bouncer host
+# (Phase 2). Aucune exposition internet directe (sauf CAPI sortant).
+
+services:
+  crowdsec:
+    image: {{ crowdsec_image }}:{{ crowdsec_version }}
+    container_name: crowdsec
+    restart: unless-stopped
+
+    # --- Collections installees au boot par l'entrypoint ---
+    environment:
+      COLLECTIONS: "{{ crowdsec_collections | join(' ') }}"
+
+    # --- LAPI exposee sur loopback host uniquement (pour le bouncer Phase 2) ---
+    # Jamais sur 0.0.0.0 : la LAPI n'a rien a faire sur internet.
+    ports:
+      - "{{ crowdsec_lapi_bind }}:{{ crowdsec_lapi_port }}:8080"
+
+    # --- Securite ---
+    # read_only non active : CrowdSec ecrit dans /etc/crowdsec/hub/ au runtime
+    # (install collections) et dans /var/log/crowdsec/ (logs internes).
+    # Durcissement possible plus tard avec tmpfs + bind mount dossier complet.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # DAC_READ_SEARCH : necessaire pour lire /var/log/auth.log (owned root:adm).
+    cap_add:
+      - DAC_READ_SEARCH
+
+    # --- Healthcheck ---
+    # cscli lapi status : verifie que la LAPI interne repond.
+    healthcheck:
+      test: ["CMD", "cscli", "lapi", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    volumes:
+      # --- Config custom (bind mount fichiers, override sur image) ---
+      - "{{ crowdsec_data_dir }}/config/acquis.yaml:/etc/crowdsec/acquis.yaml:ro"
+      - "{{ crowdsec_data_dir }}/config/profiles.yaml:/etc/crowdsec/profiles.yaml:ro"
+      - "{{ crowdsec_data_dir }}/config/home-whitelists.yaml:/etc/crowdsec/parsers/s02-enrich/home-whitelists.yaml:ro"
+      # Parser local en s01-parse : duplique sshd-success-logs avec filtre
+      # etendu a "sshd-session" pour compat OpenSSH 9.8+ (voir commentaires
+      # du template sshd-session-alias.yaml.j2).
+      - "{{ crowdsec_data_dir }}/config/sshd-session-alias.yaml:/etc/crowdsec/parsers/s01-parse/home-sshd-success-session.yaml:ro"
+      # --- DB SQLite + historique des decisions ---
+      - "{{ crowdsec_data_dir }}/data:/var/lib/crowdsec/data"
+      # --- Sources de logs (read-only) ---
+      - "{{ crowdsec_ssh_auth_log }}:/var/log/auth.log:ro"
+      - "{{ crowdsec_traefik_logs_volume }}:/var/log/traefik:ro"
+
+    networks:
+      - {{ crowdsec_network_name }}
+
+networks:
+  {{ crowdsec_network_name }}:
+    name: {{ crowdsec_network_name }}
+    driver: bridge
+    # Sortie internet requise : appel a la Central API (api.crowdsec.net)
+    # pour recevoir la blocklist communautaire et pousser des resumes anonymes.
+    internal: false
+
+volumes:
+  {{ crowdsec_traefik_logs_volume }}:
+    external: true
+    name: {{ crowdsec_traefik_logs_volume }}
