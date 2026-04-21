@@ -69,6 +69,14 @@ table inet filter {
     oifname "wt0" accept
 {% endif %}
 
+{% if base_nftables_output_docker_bridges | default(false) %}
+    # Output vers les bridges Docker — necessaire pour les process host qui
+    # joignent un container via docker-proxy (ex: crowdsec-firewall-bouncer).
+    # L'isolation inter-container reste geree par Docker (iptables + internal:true).
+    oifname "docker*" accept
+    oifname "br-*" accept
+{% endif %}
+
 {% for rule in base_nftables_output_allow %}
     # Output autorise : {{ rule.dest }}:{{ rule.port }}/{{ rule.proto }}
     {{ rule.proto }} dport {{ rule.port }} ip daddr {{ rule.dest }} accept

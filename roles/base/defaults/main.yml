@@ -36,3 +36,11 @@ base_nftables_input_udp_allow: []
 # Mesh NetBird — autorise le trafic sur wt0 dans nftables
 # Activer quand NetBird est deploye sur la machine
 base_nftables_enable_mesh: false
+
+# Autoriser l'output host -> bridges Docker (docker0 + br-*).
+# Necessaire quand un process host doit joindre un service expose par un
+# container via docker-proxy : docker-proxy accepte sur 127.0.0.1:PORT puis
+# ouvre une NOUVELLE connexion vers le bridge IP du container (172.x.x.x).
+# Cette 2e connexion traverse le chain output -> policy drop sans ce flag.
+# Cas d'usage actuel : crowdsec-firewall-bouncer (host) -> LAPI (container).
+base_nftables_output_docker_bridges: false
