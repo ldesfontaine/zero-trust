@@ -32,11 +32,15 @@
     system: false
     state: present
 
+# path explicite : permet a authorized_key de fonctionner en --check meme
+# quand la task "Creer le user deploy" n'a pas encore reellement cree le
+# user (elle reporte 'changed' mais ne fait rien en check mode).
 - name: "Utilisateurs — Autoriser la cle SSH du user deploy"
   ansible.posix.authorized_key:
     user: "{{ base_deploy_user }}"
     key: "{{ base_deploy_ssh_pubkey }}"
     exclusive: true
+    path: "/home/{{ base_deploy_user }}/.ssh/authorized_keys"
     state: present
 
 # Ansible a besoin de become sur trop de commandes pour une allowlist sudoers

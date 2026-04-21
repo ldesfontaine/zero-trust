@@ -10,8 +10,13 @@
     name: "{{ base_packages }}"
     state: present
 
+# En --check, la task apt precedente reporte 'changed' sans installer
+# reellement le paquet. Le service unattended-upgrades n'existe donc pas
+# encore pendant un dry-run sur machine fraiche. En real run, le service
+# sera bien present.
 - name: "Paquets — Activer les mises a jour automatiques de securite"
   ansible.builtin.systemd:
     name: unattended-upgrades
     enabled: true
     state: started
+  when: not ansible_check_mode

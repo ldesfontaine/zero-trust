@@ -53,13 +53,19 @@
   when: _sshd_config is changed or _sshd_cloud_init_removed is changed
 
 # Basculer la connexion Ansible sur le nouveau port et le user deploy
+# En --check, sshd n'a pas ete reellement restart : ne PAS basculer sinon
+# les tasks suivantes tentent de se connecter sur un port pas encore ouvert.
 - name: "SSH — Basculer la connexion sur le port durci"
   ansible.builtin.set_fact:
     ansible_port: "{{ base_ssh_port }}"
-  when: ansible_port | int != base_ssh_port | int
+  when:
+    - ansible_port | int != base_ssh_port | int
+    - not ansible_check_mode
 
 - name: "SSH — Basculer sur le user deploy"
   ansible.builtin.set_fact:
     ansible_user: "{{ base_deploy_user }}"
     ansible_ssh_private_key_file: "{{ base_deploy_ssh_private_key }}"
-  when: ansible_user == 'root'
+  when:
+    - ansible_user == 'root'
+    - not ansible_check_mode

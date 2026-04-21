@@ -1,23 +1,48 @@
-# Variables specifiques au Pi (non chiffre)
-# Placeholder — a completer au Sprint 5 (Traefik Internal)
+# inventory/host_vars/pinass/main.yml
+# ═══════════════════════════════════════════════════════════════════════
+# Pi (pinass) — configuration specifique
+#
+# Role : services prives (Vaultwarden, Immich, Seafile, AdGuard),
+# zero exposition publique. Accessible uniquement via mesh NetBird.
+# ═══════════════════════════════════════════════════════════════════════
 
 # --- SSH ---
 base_ssh_port: 2222
 
-# --- Firewall (nftables) ---
-# Pas de ports input ouverts (mesh only, pas d'IP publique)
+# --- Firewall nftables ---
+# Pi = zero port public en INPUT.
+# Tout le trafic legitime passe par l'interface mesh (wt0).
 base_nftables_input_tcp_allow: []
 base_nftables_input_udp_allow: []
-base_nftables_output_allow:
-  - { dest: "9.9.9.9", port: 53, proto: "udp", comment: "DNS Quad9" }
-  - { dest: "1.1.1.1", port: 53, proto: "udp", comment: "DNS Cloudflare" }
-  - { dest: "9.9.9.9", port: 853, proto: "tcp", comment: "DNS-over-TLS Quad9" }
-  - { dest: "0.0.0.0/0", port: 443, proto: "tcp", comment: "HTTPS (GHCR, API DNS provider)" }
 
-# --- Traefik (mode internal) — a activer Sprint 5 ---
-# Mode TLS auto-detecte par le role : token Cloudflare present → DNS-01 + wildcard
-# traefik_mode: "internal"
-# traefik_listen_address: "{{ netbird_client_ip }}"
-# traefik_tls_email: "TO_FILL"
-# traefik_enable_waf: false
-# traefik_enable_crowdsec: false
+# Trafic mesh NetBird accepte en input (WireGuard sur eth0 puis tunnel wt0)
+base_nftables_enable_mesh: true
+
+# Host peut sortir vers containers Docker (Traefik internal, healthchecks)
+base_nftables_output_docker_bridges: true
+
+# Output autorise : DNS externe + HTTPS/HTTP pour apt / GHCR / git
+base_nftables_output_allow:
+  - { dest: "9.9.9.9",   port: 53,  proto: "udp", comment: "DNS Quad9" }
+  - { dest: "1.1.1.1",   port: 53,  proto: "udp", comment: "DNS Cloudflare" }
+  - { dest: "0.0.0.0/0", port: 443, proto: "tcp", comment: "HTTPS (apt, GHCR, git, LE)" }
+  - { dest: "0.0.0.0/0", port: 80,  proto: "tcp", comment: "HTTP (mirroirs apt)" }
+
+# --- NetBird client ---
+# Le groupe NetBird pour ce noeud (utilise par l'API pour generer la setup key)
+netbird_client_group: "private"
+
+# --- Traefik (mode internal) ---
+# Bind mesh-only : Traefik ecoute uniquement sur l'IP mesh du Pi.
+# La variable {{ netbird_client_ip }} est un fact cree par le role
+# netbird_client APRES enrollment. Traefik est donc deploye APRES NetBird.
+traefik_mode: "internal"
+traefik_listen_address: "{{ netbird_client_ip }}"
+traefik_tls_email: "{{ vault_admin_email }}"
+
+# Pas de WAF sur le Pi (trafic mesh trusted, pas de surface d'attaque publique)
+traefik_enable_waf: false
+traefik_enable_crowdsec: false
+
+# Pas de reseau externe supplementaire pour Traefik Internal
+traefik_extra_networks: []
