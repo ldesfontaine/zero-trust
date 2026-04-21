@@ -11,6 +11,7 @@
       Accept: "application/json"
     status_code: 200
   register: netbird_config_existing_policies
+  check_mode: false
 
 - name: "NetBird Config — Extraire les noms des policies existantes"
   ansible.builtin.set_fact:
@@ -38,7 +39,26 @@
 # --- Definir les 6 policies ---
 # NetBird est deny-by-default : pas besoin de drop explicite dmz → dmz.
 
+# En --check, la POST de creation des groupes (groups.yml) est skippee :
+# si c'est le premier run, netbird_config_group_ids ne contient pas encore
+# les 4 groupes attendus et les set_fact qui suivent planteraient sur
+# netbird_config_group_ids['admin']. On skip proprement avec un message.
+- name: "NetBird Config — Detecter les groupes manquants"
+  ansible.builtin.set_fact:
+    netbird_config_missing_groups: >-
+      {{ ['admin', 'dmz', 'private', 'agents']
+         | difference((netbird_config_group_ids | default({})).keys() | list) }}
+
+- name: "NetBird Config — Skip policies si groupes manquants (--check premier run)"
+  ansible.builtin.debug:
+    msg: >-
+      Groupes manquants : {{ netbird_config_missing_groups }}.
+      Skip policies. Normal en --check sur premier run (les POST
+      de creation sont skippees), sinon investiguer.
+  when: netbird_config_missing_groups | length > 0
+
 - name: "NetBird Config — Definir la liste des policies"
+  when: netbird_config_missing_groups | length == 0
   ansible.builtin.set_fact:
     netbird_config_policies:
       # Policy 1 : admin → dmz, ALL (unidirectionnel — serveur ne peut pas initier)
@@ -157,7 +177,9 @@
         }]
       } }}
     status_code: 200
-  loop: "{{ netbird_config_policies }}"
+  loop: "{{ netbird_config_policies | default([]) }}"
   loop_control:
     loop_var: netbird_config_policy_item
-  when: netbird_config_policy_item.name not in netbird_config_existing_policy_names
+  when:
+    - netbird_config_missing_groups | length == 0
+    - netbird_config_policy_item.name not in netbird_config_existing_policy_names

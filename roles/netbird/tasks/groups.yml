@@ -14,6 +14,7 @@
   until: netbird_config_api_check.status == 200
   retries: 12
   delay: 5
+  check_mode: false
 
 - name: "NetBird Config — Extraire les noms des groupes existants"
   ansible.builtin.set_fact:
@@ -45,6 +46,7 @@
       Accept: "application/json"
     status_code: 200
   register: netbird_config_all_groups
+  check_mode: false
 
 # Construire un dict nom → ID pour les policies
 - name: "NetBird Config — Stocker la map groupe → ID"
