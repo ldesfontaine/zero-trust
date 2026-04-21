@@ -3,5 +3,9 @@
   "log-opts": {
     "max-size": "{{ docker_daemon_log_max_size }}",
     "max-file": "{{ docker_daemon_log_max_file }}"
-  }
+  }{% if docker_daemon_dns | length > 0 %},
+  "dns": {{ docker_daemon_dns | to_json }}
+{% else %}
+
+{% endif %}
 }

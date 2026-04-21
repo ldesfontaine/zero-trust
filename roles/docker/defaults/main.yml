@@ -14,6 +14,17 @@ docker_daemon_log_driver: "json-file"
 docker_daemon_log_max_size: "10m"
 docker_daemon_log_max_file: "3"
 
+# --- Daemon DNS ---
+# Upstreams pour le DNS embarque Docker (127.0.0.11 dans les containers).
+# Contourne le /etc/resolv.conf host : essentiel sur machines avec NetBird
+# client qui hijacke le resolver host — les containers ne peuvent pas
+# joindre NetBird DNS via NAT bridge (source IP containee, filtree cote
+# NetBird). Bug decouvert 2026-04-21 : Traefik Internal Pi timeout sur
+# lookup ACME. Liste alignee sur base_dns_servers + nftables allowlist.
+docker_daemon_dns:
+  - "9.9.9.9"
+  - "1.1.1.1"
+
 # --- Socket Proxy ---
 docker_socket_proxy_image: "tecnativa/docker-socket-proxy"
 docker_socket_proxy_version: "0.1.2"  # source de verite : inventory/group_vars/all/versions.yml
