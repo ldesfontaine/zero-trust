@@ -20,7 +20,16 @@ traefik_listen_address: "0.0.0.0"
 # Aucune variable a switcher manuellement.
 traefik_tls_email: ""
 # Token API Cloudflare — a remplir dans host_vars/<machine>/vault.yml pour DNS-01
-vault_cloudflare_dns_api_token: ""
+
+# --- ACME CA server ---
+# Vide = production Let's Encrypt (defaut). Pour staging (pas de rate limit,
+# certs "Fake LE" non trustes), override en host_vars :
+#   traefik_acme_ca_server: "https://acme-staging-v02.api.letsencrypt.org/directory"
+traefik_acme_ca_server: ""
+
+# Secret attendu (a remplir dans inventory/host_vars/<machine>/vault.yml) :
+#   vault_cloudflare_dns_api_token — token API Cloudflare pour DNS-01
+# Pas de placeholder ici : un vault_* absent DOIT faire echouer le play.
 
 # --- Securite ---
 traefik_enable_waf: true

@@ -36,6 +36,10 @@ certificatesResolvers:
     acme:
       email: "{{ traefik_tls_email }}"
       storage: /letsencrypt/acme.json
+{% if traefik_acme_ca_server | length > 0 %}
+      # STAGING — certs "Fake LE" non trustes, pas de rate limit
+      caServer: "{{ traefik_acme_ca_server }}"
+{% endif %}
 {% if traefik_tls_mode == "dns" %}
       dnsChallenge:
         provider: cloudflare

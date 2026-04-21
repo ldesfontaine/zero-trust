@@ -97,23 +97,37 @@
     group: root
     mode: "0700"
 
+# Wipe explicite de acme.json — a activer ponctuellement en CLI :
+#   -e traefik_acme_ca_reset=true
+# Cas d'usage : bascule staging → prod (ou inverse). Sans wipe, Traefik
+# continue a utiliser les certs deja stockes et ne redemande pas.
+- name: "Traefik — Wipe acme.json (changement CA staging/prod)"
+  ansible.builtin.file:
+    path: "{{ traefik_data_dir }}/letsencrypt/acme.json"
+    state: absent
+  when: traefik_acme_ca_reset | default(false)
+
 - name: "Traefik — Verifier si un acme.json existe deja sur l'hote"
   ansible.builtin.stat:
     path: "{{ traefik_data_dir }}/letsencrypt/acme.json"
   register: traefik_acme_live_stat
 
+# Backup par host : chaque machine a son propre acme.json (key ACME + certs
+# distincts). Le nom du fichier inclut inventory_hostname pour differencier
+# vps-acme.json.vault et pinass-acme.json.vault dans le meme repo.
 - name: "Traefik — Verifier si un backup acme.json chiffre existe localement"
   ansible.builtin.stat:
-    path: "{{ playbook_dir }}/../backups/traefik/acme.json.vault"
+    path: "{{ playbook_dir }}/../backups/traefik/{{ inventory_hostname }}-acme.json.vault"
   register: traefik_acme_backup_stat
   delegate_to: localhost
   become: false
 
 # Restauration UNIQUEMENT si aucun acme.json n'existe deja sur l'hote.
 # Sinon on ecraserait les certs renouveles par Traefik (divergence repo/live).
+# Skippee aussi en mode reset : on veut repartir de zero, pas restaurer.
 - name: "Traefik — Restaurer acme.json depuis le backup chiffre"
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../backups/traefik/acme.json.vault"
+    src: "{{ playbook_dir }}/../backups/traefik/{{ inventory_hostname }}-acme.json.vault"
     dest: "{{ traefik_data_dir }}/letsencrypt/acme.json"
     owner: root
     group: root
@@ -122,17 +136,19 @@
   when:
     - traefik_acme_backup_stat.stat.exists
     - not traefik_acme_live_stat.stat.exists
+    - not (traefik_acme_ca_reset | default(false))
 
 - name: "Traefik — Avertir si pas de backup ni d'acme.json existant"
   ansible.builtin.debug:
     msg: >-
-      Pas de backup acme.json dans backups/traefik/ et pas d'acme.json sur l'hote.
-      Traefik demandera un nouveau certificat a Let's Encrypt.
-      ATTENTION rate limit : 5 certs identiques / 7 jours.
+      Pas de backup {{ inventory_hostname }}-acme.json.vault dans backups/traefik/
+      et pas d'acme.json sur l'hote. Traefik demandera un nouveau certificat.
+      ATTENTION rate limit prod : 5 certs identiques / 7 jours.
       Apres obtention, faire :
-        scp -P {{ base_ssh_port }} deploy@<VPS_IP>:{{ traefik_data_dir }}/letsencrypt/acme.json /tmp/acme.json
-        ansible-vault encrypt /tmp/acme.json --output backups/traefik/acme.json.vault
-        git add backups/traefik/acme.json.vault && git commit
+        scp -P {{ base_ssh_port }} deploy@{{ ansible_host }}:{{ traefik_data_dir }}/letsencrypt/acme.json /tmp/acme.json
+        ansible-vault encrypt /tmp/acme.json --output backups/traefik/{{ inventory_hostname }}-acme.json.vault
+        rm /tmp/acme.json
+        git add backups/traefik/{{ inventory_hostname }}-acme.json.vault && git commit
   when:
     - not traefik_acme_backup_stat.stat.exists
     - not traefik_acme_live_stat.stat.exists
