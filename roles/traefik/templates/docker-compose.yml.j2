@@ -1,8 +1,13 @@
 # {{ ansible_managed }}
 # Traefik {{ traefik_mode }} — reverse proxy TLS
 #
-# socket-proxy-net (internal) pour le Docker socket proxy.
-# traefik-public (edge uniquement) pour publier les ports sur le host.
+# socket-proxy-net (internal) : acces a l'API Docker via socket-proxy.
+# traefik-public (non-internal) : sortie internet pour le challenge ACME
+#   (DNS-01 Cloudflare API, HTTP-01 fetch). Obligatoire sur les 2 modes :
+#   sans ce reseau, Traefik n'aurait que socket-proxy-net (internal: true)
+#   + service-nets (internal: true) → pas de route sortante, ACME lookup
+#   timeout (bug 2026-04-21 mode internal). Le nom "public" est historique
+#   (edge expose les ports via Docker port mapping, independant du reseau).
 # Traefik rejoint les reseaux des services via le role (docker network connect).
 
 services:
@@ -40,9 +45,7 @@ services:
 {% endif %}
     networks:
       - socket-proxy-net
-{% if traefik_mode == "edge" %}
       - traefik-public
-{% endif %}
     healthcheck:
       test: ["CMD", "traefik", "healthcheck"]
       interval: 30s
@@ -59,7 +62,7 @@ volumes:
 networks:
   socket-proxy-net:
     external: true
-{% if traefik_mode == "edge" %}
   traefik-public:
     name: traefik-public
-{% endif %}
+    # Non-internal (default) : Traefik peut joindre internet pour ACME.
+    # Reseau par-host, meme nom sur edge et internal (2 reseaux distincts).
