@@ -20,10 +20,16 @@ services:
     # nginx-unprivileged a besoin d'ecrire quelques fichiers temporaires
     # en runtime (cache, PID, temp uploads nginx). read_only bloque
     # l'ecriture sur tout le reste, ces tmpfs sont la seule exception.
+    # mode=1777 (sticky + world-writable) car le tmpfs Docker par defaut
+    # est root:root 0755 → l'UID non-root du container ne peut pas ecrire
+    # (nginx: "mkdir() /var/cache/nginx/client_temp failed (13: Permission denied)").
     tmpfs:
-      - /tmp
-      - /var/cache/nginx
-      - /var/run
+      - /tmp:mode=1777
+      - /var/cache/nginx:mode=1777
+      - /var/run:mode=1777
+      # L'image alam00000/bentopdf a un nginx.conf custom qui ecrit
+      # son PID dans /etc/nginx/tmp/nginx.pid — chemin non standard.
+      - /etc/nginx/tmp:mode=1777
     security_opt:
       - no-new-privileges:true
     cap_drop:
