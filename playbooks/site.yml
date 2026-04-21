@@ -17,20 +17,26 @@
   gather_facts: false
   tags: [infra]
 
+  # tags: [always] sur les pre_tasks : elles doivent tourner quel que soit
+  # le --tags passe (la detection du port SSH et le gather_facts sont
+  # necessaires avant toute task, y compris pour --tags docker ou --tags services).
   pre_tasks:
     - name: "Tester la connexion sur le port actuel"
       ansible.builtin.wait_for_connection:
         timeout: 5
       ignore_errors: true
       register: ssh_test
+      tags: [always]
 
     - name: "Basculer sur le port durci si necessaire"
       ansible.builtin.set_fact:
         ansible_port: "{{ base_ssh_port }}"
       when: ssh_test is failed
+      tags: [always]
 
     - name: "Collecter les facts manuellement"
       ansible.builtin.setup:
+      tags: [always]
 
   roles:
     - role: base
@@ -57,6 +63,8 @@
       ansible.builtin.include_role:
         name: netbird
         tasks_from: server.yml
+        apply:
+          tags: [netbird, netbird-server]
       when: machine_mesh.server | default(false)
       tags: [netbird, netbird-server]
 
@@ -78,6 +86,8 @@
       ansible.builtin.include_role:
         name: netbird
         tasks_from: config.yml
+        apply:
+          tags: [netbird, netbird-config]
       when: machine_mesh.server | default(false)
       tags: [netbird, netbird-config]
 
@@ -85,6 +95,8 @@
       ansible.builtin.include_role:
         name: netbird
         tasks_from: client/main.yml
+        apply:
+          tags: [netbird, netbird-client]
       when: machine_mesh.client | default(false)
       tags: [netbird, netbird-client]
 
