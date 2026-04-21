@@ -28,6 +28,16 @@
     - cache
     - etc
 
+- name: "Ntfy — Valider le format du vault_ntfy_auth_token"
+  ansible.builtin.fail:
+    msg: >-
+      vault_ntfy_auth_token doit respecter le format strict ntfy :
+      tk_ + 29 chars [a-z0-9] (32 chars au total). Valeur actuelle invalide.
+      Regenerer : echo "tk_$(tr -dc 'a-z0-9' < /dev/urandom | head -c 29)"
+  when:
+    - vault_ntfy_auth_token | length > 0
+    - not (vault_ntfy_auth_token is match('^tk_[a-z0-9]{29}$'))
+
 - name: "Ntfy — Deployer la configuration serveur"
   ansible.builtin.template:
     src: server.yml.j2
@@ -58,6 +68,12 @@
     state: present
 
 # --- Provisioning user admin + token (idempotent) ---
+# Token : pre-provisionne via auth-startup-queries dans server.yml.j2
+# (la CLI "ntfy token add <user> <valeur>" ignore la valeur fournie).
+# Le startup query SELECT-INSERT depuis user WHERE user='admin' :
+# au tout premier boot, le user n'existe pas encore et l'INSERT est no-op.
+# On force donc un restart de ntfy apres creation du user admin pour
+# que le startup query reussisse.
 
 - name: "Ntfy — Verifier si le user admin existe"
   ansible.builtin.command:
@@ -86,28 +102,11 @@
   when: "'user admin' not in ntfy_user_list.stdout"
   no_log: true
 
-- name: "Ntfy — Verifier si un token existe pour admin"
+# Restart inline (pas un handler) : le startup query SQL doit s'executer
+# IMMEDIATEMENT apres la creation du user admin, pas en fin de play, sinon
+# une autre task qui depend du token (futur agent monitoring) echouerait.
+- name: "Ntfy — Redemarrer pour declencher l'INSERT du token"  # noqa: no-handler
   ansible.builtin.command:
-    cmd: docker exec ntfy ntfy token list admin
-  register: ntfy_token_list
-  changed_when: false
-  failed_when: false
-
-- name: "Ntfy — Verifier que le token est defini dans le vault"
-  ansible.builtin.fail:
-    msg: >-
-      vault_ntfy_auth_token doit etre defini dans le vault.
-      Generer avec : echo "tk_$(tr -dc 'a-z0-9' < /dev/urandom | head -c 26)"
-      Puis ansible-vault edit inventory/host_vars/vps/vault.yml
-  when: vault_ntfy_auth_token | length == 0
-
-- name: "Ntfy — Creer le token defini dans le vault (idempotent)"
-  ansible.builtin.command:
-    cmd: docker exec ntfy ntfy token add admin {{ vault_ntfy_auth_token }}
-  register: ntfy_token_add
-  changed_when: ntfy_token_add.rc == 0
-  failed_when:
-    - ntfy_token_add.rc != 0
-    - "'already exists' not in (ntfy_token_add.stderr | default(''))"
-  when: vault_ntfy_auth_token not in (ntfy_token_list.stdout | default(''))
-  no_log: true
+    cmd: docker restart ntfy
+  when: ntfy_user_add is changed
+  changed_when: true

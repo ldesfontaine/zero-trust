@@ -24,3 +24,16 @@ attachment-expiry-duration: "6h"
 # --- Authentification ---
 auth-file: "/var/cache/ntfy/auth.db"
 auth-default-access: "deny-all"
+{% if vault_ntfy_auth_token | length > 0 %}
+
+# Pre-provisioning du token admin via SQL au demarrage du serveur.
+# Idempotent : DELETE des anciens tokens vault-managed != courant
+# (rotation), puis INSERT OR IGNORE du token courant.
+# Le SELECT ne retourne rien tant que le user admin n'existe pas
+# → INSERT no-op au tout premier demarrage. Le rôle force un restart
+# de ntfy apres creation du user admin pour que le startup query reussisse.
+auth-startup-queries: |
+  DELETE FROM user_token WHERE label = 'vault-managed';
+  INSERT INTO user_token (user_id, token, label, last_access, last_origin, expires)
+  SELECT id, '{{ vault_ntfy_auth_token }}', 'vault-managed', 0, '', 0 FROM user WHERE user = 'admin';
+{% endif %}
