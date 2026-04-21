@@ -16,6 +16,27 @@
 # Traefik se connecte aux reseaux de chaque service APRES le deploy.
 # ============================================================
 
+# Auto-decouverte IP mesh en mode internal : Traefik fetch l'IP depuis
+# l'interface wt0 (NetBird). Decouple le role Traefik du role netbird :
+# plus besoin de l'ordre client→traefik dans le play, ni de fact_caching
+# pour persister netbird_client_ip entre runs avec --tags traefik.
+- name: "Traefik — Recuperer l'IP mesh depuis wt0 (mode internal)"
+  ansible.builtin.shell:
+    cmd: "set -o pipefail && ip -4 addr show wt0 | grep -oP 'inet \\K[0-9.]+'"
+    executable: /bin/bash
+  register: _traefik_wt0_ip
+  changed_when: false
+  check_mode: false
+  when: traefik_mode == "internal"
+
+- name: "Traefik — Stocker l'IP mesh comme fact (traefik_mesh_ip)"
+  ansible.builtin.set_fact:
+    traefik_mesh_ip: "{{ _traefik_wt0_ip.stdout }}"
+  when:
+    - traefik_mode == "internal"
+    - _traefik_wt0_ip.stdout is defined
+    - _traefik_wt0_ip.stdout | length > 0
+
 # Detection automatique du mode TLS :
 # - Token Cloudflare present (>10 chars) → DNS-01 + wildcard
 # - Sinon                                 → HTTP-01 classique (fallback)

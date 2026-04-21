@@ -12,9 +12,10 @@ Un seul rôle, deux comportements selon `traefik_mode` :
 - WAF + CrowdSec activables (`traefik_enable_waf`, `traefik_enable_crowdsec`)
 
 ### Mode `internal` (Pi)
-- Écoute sur IP mesh (`netbird_client_ip`), pas de port 80 exposé
+- Écoute sur IP mesh (fact `traefik_mesh_ip`, fetch automatique depuis `wt0` au démarrage du rôle), pas de port 80 exposé
 - Challenge DNS-01 **obligatoire** (pas d'HTTP-01 possible sans port 80 public)
 - `fail` early si `vault_cloudflare_dns_api_token` absent
+- Autonome : pas de dépendance au rôle `netbird` dans le play (pas besoin d'ordre client→traefik)
 
 ## tasks_from
 

@@ -34,10 +34,11 @@ netbird_client_group: "private"
 
 # --- Traefik (mode internal) ---
 # Bind mesh-only : Traefik ecoute uniquement sur l'IP mesh du Pi.
-# La variable {{ netbird_client_ip }} est un fact cree par le role
-# netbird_client APRES enrollment. Traefik est donc deploye APRES NetBird.
+# traefik_mesh_ip est un fact pose par le role Traefik au demarrage
+# (fetch via `ip -4 addr show wt0`). Autonome : pas besoin que netbird
+# ait tourne avant, ni de fact_caching Ansible.
 traefik_mode: "internal"
-traefik_listen_address: "{{ netbird_client_ip }}"
+traefik_listen_address: "{{ traefik_mesh_ip }}"
 traefik_tls_email: "{{ vault_admin_email }}"
 
 # ACME staging — TEMPORAIRE jusqu'au 2026-04-24 (fin rate limit LE prod,
