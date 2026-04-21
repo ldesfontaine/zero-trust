@@ -1,0 +1,100 @@
+# ============================================================
+# DNS — resolution coherente avec l'allowlist nftables
+#
+# Probleme a resoudre :
+#   - Pi : NetworkManager pousse DNS de la box (192.168.1.1) via DHCP
+#     → bloque par nftables (policy drop + allowlist 9.9.9.9/1.1.1.1)
+#   - VPS : systemd-resolved utilise des upstreams DHCP Hostinger
+#     (153.92.2.6) qui sont aussi bloques par nftables
+#
+# Solution unifiee : /etc/resolv.conf statique gere par Ansible.
+# - Remplace le symlink vers stub-resolv.conf sur VPS
+# - Override le resolv.conf dynamique de NetworkManager sur Pi
+# - Idempotent : si un process ecrase le fichier, Ansible le remet
+# ============================================================
+
+# --- 1. Desactiver la gestion DNS de NetworkManager (si present) ---
+
+- name: "DNS — Detecter si NetworkManager est present"
+  ansible.builtin.stat:
+    path: /etc/NetworkManager
+  register: _nm_present
+  check_mode: false
+
+- name: "DNS — Desactiver la gestion DNS de NetworkManager"
+  ansible.builtin.copy:
+    dest: /etc/NetworkManager/conf.d/99-ansible-dns-none.conf
+    content: |
+      # Ansible managed
+      # NetworkManager NE DOIT PAS gerer /etc/resolv.conf
+      # Les DNS sont pilotes par Ansible (coherence allowlist nftables)
+      [main]
+      dns=none
+    owner: root
+    group: root
+    mode: "0644"
+  register: _nm_dns_drop_in
+  when: _nm_present.stat.exists
+
+- name: "DNS — Recharger NetworkManager apres drop-in"
+  ansible.builtin.systemd:
+    name: NetworkManager
+    state: reloaded
+  when:
+    - _nm_dns_drop_in is defined
+    - _nm_dns_drop_in.changed | default(false)
+  failed_when: false
+
+# --- 2. Desactiver systemd-resolved (si actif) ---
+
+- name: "DNS — Verifier si systemd-resolved tourne"
+  ansible.builtin.systemd:
+    name: systemd-resolved
+  register: _systemd_resolved_status
+  check_mode: false
+  failed_when: false
+
+- name: "DNS — Desactiver systemd-resolved (conflit avec resolv.conf statique)"
+  ansible.builtin.systemd:
+    name: systemd-resolved
+    state: stopped
+    enabled: false
+  when:
+    - _systemd_resolved_status.status is defined
+    - _systemd_resolved_status.status.ActiveState | default('inactive') == 'active'
+
+# --- 3. Supprimer l'ancien /etc/resolv.conf SI c'est un symlink ---
+
+# Necessaire uniquement pour remplacer proprement un symlink par un fichier
+# regulier (le module copy peut suivre le symlink et ecrire a la cible).
+# Une fois le symlink supprime, la task suivante (copy) gere l'idempotence.
+# Sans ce check, la suppression+recreation tournerait a chaque run et
+# violerait la regle "2eme run = 0 changed".
+- name: "DNS — Detecter le type actuel de /etc/resolv.conf"
+  ansible.builtin.stat:
+    path: /etc/resolv.conf
+  register: _resolv_stat
+  check_mode: false
+
+- name: "DNS — Supprimer l'ancien resolv.conf (uniquement si symlink)"
+  ansible.builtin.file:
+    path: /etc/resolv.conf
+    state: absent
+  when: _resolv_stat.stat.islnk | default(false)
+
+# --- 4. Deployer le nouveau /etc/resolv.conf statique ---
+
+- name: "DNS — Deployer /etc/resolv.conf statique"
+  ansible.builtin.copy:
+    dest: /etc/resolv.conf
+    content: |
+      # Ansible managed
+      # DNS servers synchronises avec base_nftables_output_allow
+      # Ne PAS modifier manuellement — ecrase au prochain run Ansible
+      {% for dns in base_dns_servers %}
+      nameserver {{ dns }}
+      {% endfor %}
+      options timeout:2 attempts:3
+    owner: root
+    group: root
+    mode: "0644"

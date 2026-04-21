@@ -8,6 +8,16 @@ base_ssh_port: 2222
 base_admin_user: "lucas"
 base_deploy_user: "deploy"
 
+# =========================================================================
+# DNS — serveurs utilises par le host pour la resolution
+# =========================================================================
+# IMPORTANT : doit etre coherent avec base_nftables_output_allow.
+# Si tu changes ces IPs, mets a jour egalement les regles nftables
+# qui autorisent les requetes DNS sortantes.
+base_dns_servers:
+  - "9.9.9.9"     # Quad9 (primary)
+  - "1.1.1.1"     # Cloudflare (fallback)
+
 # --- Paquets systeme ---
 base_packages:
   - curl

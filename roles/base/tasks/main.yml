@@ -16,6 +16,19 @@
   ansible.builtin.include_tasks: packages.yml
   tags: [base, base-packages]
 
+# DNS avant nftables : la policy drop + allowlist 9.9.9.9/1.1.1.1 couperait
+# la resolution si resolv.conf pointait encore sur le DNS de la box (Pi) ou
+# un upstream DHCP non autorise (VPS Hostinger : 153.92.2.6). Apres packages
+# pour que apt update tourne encore avec le resolv.conf d'origine.
+# apply: propage les tags aux tasks internes. Sans ca, `--tags base-dns`
+# match l'include mais aucune des tasks internes -> include vide (cf. rules).
+- name: "Base — Configurer le DNS"
+  ansible.builtin.include_tasks:
+    file: dns.yml
+    apply:
+      tags: [base, base-dns]
+  tags: [base, base-dns]
+
 - name: "Base — Configurer les utilisateurs"
   ansible.builtin.include_tasks: users.yml
   tags: [base, base-users]
