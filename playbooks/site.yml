@@ -74,6 +74,29 @@
       when: machine_mesh.client | default(false)
       tags: [netbird, netbird-client]
 
+    # CrowdSec APRES Traefik (dependance : volume traefik-<mode>-logs).
+    # Engine et bouncer sont invoques separement pour permettre une Phase 1
+    # d'observation (engine seul) avant d'activer le blocage (bouncer).
+    # apply: propage les tags aux tasks incluses. Sans ca, `--tags crowdsec-*`
+    # match le include mais aucune des tasks internes -> include vide.
+    - name: "CrowdSec — Deployer l'Engine (detection, pas de blocage)"
+      ansible.builtin.include_role:
+        name: crowdsec
+        tasks_from: engine.yml
+        apply:
+          tags: [crowdsec, crowdsec-engine]
+      when: machine_crowdsec.engine | default(false)
+      tags: [crowdsec, crowdsec-engine]
+
+    - name: "CrowdSec — Installer le bouncer nftables (blocage effectif)"
+      ansible.builtin.include_role:
+        name: crowdsec
+        tasks_from: bouncer.yml
+        apply:
+          tags: [crowdsec, crowdsec-bouncer]
+      when: machine_crowdsec.bouncer | default(false)
+      tags: [crowdsec, crowdsec-bouncer]
+
 - name: "Services — deploiement modulaire"
   hosts: all
   become: true
