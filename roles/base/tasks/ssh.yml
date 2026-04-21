@@ -13,6 +13,18 @@
     validate: "sshd -t -f %s"
   register: _sshd_config
 
+# Debian 13 (Hostinger cloud image) livre /etc/ssh/sshd_config.d/50-cloud-init.conf
+# avec "PasswordAuthentication yes". Notre template ne contient pas d'Include donc
+# le fichier est inerte aujourd'hui, mais on le supprime par securite : un upgrade
+# de openssh-server peut reintroduire "Include /etc/ssh/sshd_config.d/*.conf" au
+# sommet de sshd_config, auquel cas cloud-init override notre durcissement (first
+# match wins dans sshd_config).
+- name: "SSH — Supprimer l'override cloud-init sur sshd_config"
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+    state: absent
+  register: _sshd_cloud_init_removed
+
 - name: "SSH — Activer le service sshd"
   ansible.builtin.systemd:
     name: sshd
@@ -28,7 +40,7 @@
   async: 1
   poll: 0
   failed_when: false
-  when: _sshd_config is changed
+  when: _sshd_config is changed or _sshd_cloud_init_removed is changed
 
 - name: "SSH — Attendre que le port durci soit disponible"
   ansible.builtin.wait_for: # noqa: no-handler
@@ -38,7 +50,7 @@
     timeout: 30
   delegate_to: localhost
   become: false
-  when: _sshd_config is changed
+  when: _sshd_config is changed or _sshd_cloud_init_removed is changed
 
 # Basculer la connexion Ansible sur le nouveau port et le user deploy
 - name: "SSH — Basculer la connexion sur le port durci"
