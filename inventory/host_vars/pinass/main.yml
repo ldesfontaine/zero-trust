@@ -40,6 +40,12 @@ traefik_mode: "internal"
 traefik_listen_address: "{{ netbird_client_ip }}"
 traefik_tls_email: "{{ vault_admin_email }}"
 
+# ACME staging — TEMPORAIRE jusqu'au 2026-04-24 (fin rate limit LE prod,
+# incident 2026-04-17 sur *.ldesfontaine.com). Passe en prod en commentant
+# cette ligne + lancer avec -e traefik_acme_ca_reset=true pour wipe le
+# cert staging de acme.json avant redemande prod.
+traefik_acme_ca_server: "https://acme-staging-v02.api.letsencrypt.org/directory"
+
 # Pas de WAF sur le Pi (trafic mesh trusted, pas de surface d'attaque publique)
 traefik_enable_waf: false
 traefik_enable_crowdsec: false
