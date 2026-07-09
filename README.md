@@ -1,5 +1,6 @@
 # Zero Trust Homelab
 
+Projet archivé
 Deployment Ansible pour une infrastructure personnelle Zero Trust sur 2 machines.
 
 ## Architecture
